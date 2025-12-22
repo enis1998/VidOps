@@ -1,0 +1,9 @@
+spring:
+  jpa:
+    hibernate:
+      ddl-auto: update
+  kafka:
+    # In Docker, Kafka is reachable via the service name on the compose network
+    bootstrap-servers: ${KAFKA_BOOTSTRAP:kafka:9092}
+  flyway:
+    enabled: false

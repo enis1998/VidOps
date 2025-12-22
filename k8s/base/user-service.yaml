@@ -1,0 +1,62 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: user-service
+  namespace: vidops
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: user-service
+  template:
+    metadata:
+      labels:
+        app: user-service
+    spec:
+      containers:
+        - name: user-service
+          image: vidops/user-service:0.1.0
+          ports:
+            - containerPort: 8082
+          env:
+            - name: SPRING_PROFILES_ACTIVE
+              value: "k8s"
+            - name: USER_DB_URL
+              value: "jdbc:postgresql://postgres-user:5432/vidops_user"
+            - name: USER_DB_USER
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-user
+                  key: username
+            - name: USER_DB_PASS
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-user
+                  key: password
+            - name: KAFKA_BOOTSTRAP
+              valueFrom:
+                configMapKeyRef:
+                  name: vidops-config
+                  key: KAFKA_BOOTSTRAP
+            - name: JWT_SECRET_BASE64
+              valueFrom:
+                secretKeyRef:
+                  name: vidops-secrets
+                  key: JWT_SECRET_BASE64
+            - name: JWT_ISSUER
+              valueFrom:
+                secretKeyRef:
+                  name: vidops-secrets
+                  key: JWT_ISSUER
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: user-service
+  namespace: vidops
+spec:
+  selector:
+    app: user-service
+  ports:
+    - port: 8082
+      targetPort: 8082

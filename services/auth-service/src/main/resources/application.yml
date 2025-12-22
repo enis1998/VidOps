@@ -1,0 +1,45 @@
+server:
+  port: 8081
+
+spring:
+  application:
+    name: auth-service
+
+  datasource:
+    url: ${AUTH_DB_URL:jdbc:postgresql://localhost:5433/vidops_auth}
+    username: ${AUTH_DB_USER:vidops}
+    password: ${AUTH_DB_PASSWORD:vidops}
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    open-in-view: false
+    properties:
+      hibernate:
+        jdbc:
+          time_zone: UTC
+  flyway:
+    enabled: true
+
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP:localhost:9092}
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
+      properties:
+        spring.json.add.type.headers: false
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+
+vidops:
+  security:
+    jwt:
+      issuer: ${JWT_ISSUER:vidops.local}
+      secret-base64: ${JWT_SECRET_BASE64:}
+      access-ttl-minutes: ${ACCESS_TOKEN_TTL_MIN:15}
+      refresh-ttl-days: ${REFRESH_TOKEN_TTL_DAYS:30}
+    cookies:
+      refresh-cookie-name: VIDOPS_REFRESH
