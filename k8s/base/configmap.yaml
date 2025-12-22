@@ -1,0 +1,9 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: vidops-config
+  namespace: vidops
+data:
+  ACCESS_TOKEN_TTL_MIN: "15"
+  REFRESH_TOKEN_TTL_DAYS: "30"
+  KAFKA_BOOTSTRAP: "kafka:9092"
