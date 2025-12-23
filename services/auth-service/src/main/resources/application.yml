@@ -43,3 +43,5 @@ vidops:
       refresh-ttl-days: ${REFRESH_TOKEN_TTL_DAYS:30}
     cookies:
       refresh-cookie-name: VIDOPS_REFRESH
+  google:
+    client-id: ${GOOGLE_CLIENT_ID:}
