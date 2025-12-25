@@ -18,4 +18,6 @@ public interface RefreshTokenService {
     void revoke(String refreshToken);
 
     void clearCookie(HttpServletResponse res);
+
+    long cleanupExpiredTokens();
 }

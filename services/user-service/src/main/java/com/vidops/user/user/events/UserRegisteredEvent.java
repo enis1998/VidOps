@@ -1,4 +1,4 @@
-package com.vidops.auth.events;
+package com.vidops.user.user.events;
 
 import java.time.Instant;
 import java.util.UUID;
