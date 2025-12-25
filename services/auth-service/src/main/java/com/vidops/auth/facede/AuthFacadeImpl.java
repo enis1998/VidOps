@@ -4,11 +4,13 @@ import com.vidops.auth.entity.AuthUser;
 import com.vidops.auth.mapper.AuthMapper;
 import com.vidops.auth.service.AuthService;
 import com.vidops.auth.service.RefreshTokenService;
+import com.vidops.auth.web.dto.AuthResponse;
+import com.vidops.auth.web.dto.GoogleLoginRequest;
+import com.vidops.auth.web.dto.LoginRequest;
+import com.vidops.auth.web.dto.RegisterRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-
-import java.util.UUID;
 
 @Service
 public class AuthFacadeImpl implements AuthFacade {
@@ -17,7 +19,7 @@ public class AuthFacadeImpl implements AuthFacade {
     private final RefreshTokenService refreshTokenService;
     private final AuthMapper mapper;
 
-    public AuthContractImpl(AuthService authService, RefreshTokenService refreshTokenService, AuthMapper mapper) {
+    public AuthFacadeImpl(AuthService authService, RefreshTokenService refreshTokenService, AuthMapper mapper) {
         this.authService = authService;
         this.refreshTokenService = refreshTokenService;
         this.mapper = mapper;
@@ -50,12 +52,9 @@ public class AuthFacadeImpl implements AuthFacade {
     @Override
     @Transactional
     public AuthResponse refresh(String refreshToken, HttpServletResponse res) {
-        var userId = refreshTokenService.verify(refreshToken);
+        // rotate eski tokenı iptal eder + yeni cookie set eder + userId döner
+        var userId = refreshTokenService.rotate(refreshToken, res);
         AuthUser user = authService.getUser(userId);
-
-        // rotate refresh token (opsiyonel ama recommended)
-        refreshTokenService.revoke(refreshToken);
-        String newRefresh = refreshTokenService.issueAndSetCookie(user.getId(), res);
 
         return mapper.toAuthResponse(user, authService.issueAccessToken(user), refreshTokenService.getAccessTtlSeconds());
     }

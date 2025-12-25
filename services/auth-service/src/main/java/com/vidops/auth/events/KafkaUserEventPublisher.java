@@ -2,18 +2,22 @@ package com.vidops.auth.events;
 
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Component;
+import tools.jackson.databind.ObjectMapper;
 
 @Component
 public class KafkaUserEventPublisher implements UserEventPublisher {
 
-    private final KafkaTemplate<String, Object> kafka;
+    private final KafkaTemplate<String, byte[]> kafkaTemplate;
+    private final ObjectMapper objectMapper;
 
-    public KafkaUserEventPublisher(KafkaTemplate<String, Object> kafka) {
-        this.kafka = kafka;
+    public KafkaUserEventPublisher(KafkaTemplate<String, byte[]> kafkaTemplate, ObjectMapper objectMapper) {
+        this.kafkaTemplate = kafkaTemplate;
+        this.objectMapper = objectMapper;
     }
 
     @Override
     public void publishUserRegistered(UserRegisteredEvent event) {
-        kafka.send("user.registered.v1", event.userId().toString(), event);
+        byte[] payload = objectMapper.writeValueAsBytes(event);
+        kafkaTemplate.send("user.registered", event.userId().toString(), payload);
     }
 }

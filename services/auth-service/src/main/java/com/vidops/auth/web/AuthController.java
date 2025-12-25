@@ -1,5 +1,10 @@
 package com.vidops.auth.web;
 
+import com.vidops.auth.facede.AuthFacade;
+import com.vidops.auth.web.dto.AuthResponse;
+import com.vidops.auth.web.dto.GoogleLoginRequest;
+import com.vidops.auth.web.dto.LoginRequest;
+import com.vidops.auth.web.dto.RegisterRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.validation.Valid;
 import org.springframework.http.ResponseEntity;
@@ -9,9 +14,9 @@ import org.springframework.web.bind.annotation.*;
 @RequestMapping("/api/auth")
 public class AuthController {
 
-    private final AuthContract contract;
+    private final AuthFacade contract;
 
-    public AuthController(AuthContract contract) {
+    public AuthController(AuthFacade contract) {
         this.contract = contract;
     }
 

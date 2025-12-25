@@ -1,5 +1,9 @@
 package com.vidops.auth.facede;
 
+import com.vidops.auth.web.dto.AuthResponse;
+import com.vidops.auth.web.dto.GoogleLoginRequest;
+import com.vidops.auth.web.dto.LoginRequest;
+import com.vidops.auth.web.dto.RegisterRequest;
 import jakarta.servlet.http.HttpServletResponse;
 
 public interface AuthFacade {

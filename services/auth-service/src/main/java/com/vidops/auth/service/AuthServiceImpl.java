@@ -1,83 +1,106 @@
 package com.vidops.auth.service;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.vidops.auth.entity.AuthUser;
 import com.vidops.auth.enums.AuthProvider;
-import com.vidops.auth.events.UserEventPublisher;
 import com.vidops.auth.events.UserRegisteredEvent;
+import com.vidops.auth.exception.DuplicateEmailException;
+import com.vidops.auth.exception.InvalidCredentialsException;
+import com.vidops.auth.exception.UserNotFoundException;
 import com.vidops.auth.repository.AuthUserRepository;
+import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.security.crypto.password.PasswordEncoder;
-import org.springframework.security.oauth2.jwt.Jwt;
-import org.springframework.security.oauth2.jwt.JwtDecoder;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Instant;
 import java.util.UUID;
 
 @Service
 public class AuthServiceImpl implements AuthService {
+
     private final AuthUserRepository authUserRepository;
     private final PasswordEncoder passwordEncoder;
     private final JwtService jwtService;
-    private final JwtDecoder googleJwtDecoder;
-    private final UserEventPublisher eventPublisher;
+    private final KafkaTemplate<String, byte[]> kafkaTemplate;
+    private final ObjectMapper objectMapper;
 
-    public AuthServiceImpl(AuthUserRepository authUserRepository,
-                           PasswordEncoder passwordEncoder,
-                           JwtService jwtService,
-                           JwtDecoder googleJwtDecoder,
-                           UserEventPublisher eventPublisher) {
+    public AuthServiceImpl(
+            AuthUserRepository authUserRepository,
+            PasswordEncoder passwordEncoder,
+            JwtService jwtService,
+            KafkaTemplate<String, byte[]> kafkaTemplate,
+            ObjectMapper objectMapper
+    ) {
         this.authUserRepository = authUserRepository;
         this.passwordEncoder = passwordEncoder;
         this.jwtService = jwtService;
-        this.googleJwtDecoder = googleJwtDecoder;
-        this.eventPublisher = eventPublisher;
+        this.kafkaTemplate = kafkaTemplate;
+        this.objectMapper = objectMapper;
     }
 
     @Override
-    public AuthUser register(String email, String rawPassword) {
-        authUserRepository.findByEmail(email).ifPresent(u -> { throw new DuplicateEmailException(email); });
+    @Transactional
+    public AuthUser register(String email, String password) {
+        authUserRepository.findByEmail(email).ifPresent(u -> {
+            throw new DuplicateEmailException(email);
+        });
 
-        AuthUser user = AuthUser.local(email, passwordEncoder.encode(rawPassword));
+        AuthUser user = AuthUser.createLocal(email, passwordEncoder.encode(password));
         AuthUser saved = authUserRepository.save(user);
 
-        eventPublisher.publishUserRegistered(new UserRegisteredEvent(saved.getId(), saved.getEmail(), null));
+        // Kafka event publish
+        UserRegisteredEvent event = new UserRegisteredEvent(
+                saved.getId(),
+                saved.getEmail(),
+                Instant.now()
+        );
+
+        try {
+            byte[] payload = objectMapper.writeValueAsBytes(event);
+            kafkaTemplate.send("user.registered", saved.getId().toString(), payload);
+        } catch (JsonProcessingException e) {
+            // İstersen burada loglayıp swallow edebilirsin, ama en azından uygulamayı çökertmesin.
+            // RuntimeException fırlatırsan register da fail olur.
+            throw new RuntimeException("Failed to serialize UserRegisteredEvent", e);
+        }
+
         return saved;
     }
 
     @Override
-    public AuthUser login(String email, String rawPassword) {
-        AuthUser user = authUserRepository.findByEmail(email).orElseThrow(InvalidCredentialsException::new);
+    @Transactional(readOnly = true)
+    public AuthUser login(String email, String password) {
+        AuthUser user = authUserRepository.findByEmail(email)
+                .orElseThrow(InvalidCredentialsException::new);
 
-        if (user.getProvider() != AuthProvider.LOCAL) throw new InvalidCredentialsException();
-        if (!passwordEncoder.matches(rawPassword, user.getPasswordHash())) throw new InvalidCredentialsException();
+        if (user.getProvider() != AuthProvider.LOCAL) {
+            throw new InvalidCredentialsException();
+        }
+
+        if (!passwordEncoder.matches(password, user.getPasswordHash())) {
+            throw new InvalidCredentialsException();
+        }
 
         return user;
     }
 
     @Override
-    public AuthUser googleLogin(String idToken) {
-        Jwt jwt = googleJwtDecoder.decode(idToken);
-
-        String email = jwt.getClaimAsString("email");
-        Boolean verified = jwt.getClaim("email_verified");
-        String name = jwt.getClaimAsString("name");
-
-        if (email == null || Boolean.FALSE.equals(verified)) throw new InvalidCredentialsException();
-
-        return authUserRepository.findByEmail(email).orElseGet(() -> {
-            AuthUser u = AuthUser.google(email);
-            AuthUser saved = authUserRepository.save(u);
-            eventPublisher.publishUserRegistered(new UserRegisteredEvent(saved.getId(), saved.getEmail(), name));
-            return saved;
-        });
-    }
-
-    @Override
+    @Transactional(readOnly = true)
     public AuthUser getUser(UUID userId) {
-        return authUserRepository.findById(userId).orElseThrow(() -> new UserNotFoundException(userId));
+        return authUserRepository.findById(userId)
+                .orElseThrow(UserNotFoundException::new);
     }
 
     @Override
     public String issueAccessToken(AuthUser user) {
-        return jwtService.issueAccessToken(user.getId(), user.getEmail(), user.getRoles());
+        String rolesCsv = "";
+        return jwtService.issueAccessToken(user.getId(), user.getEmail(), rolesCsv);
+    }
+
+    @Override
+    public AuthUser googleLogin(String idToken) {
+        throw new UnsupportedOperationException("Google login is not implemented yet");
     }
 }

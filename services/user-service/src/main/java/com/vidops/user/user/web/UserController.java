@@ -6,6 +6,9 @@ import com.vidops.user.user.web.dto.UpdateUserRequest;
 import com.vidops.user.user.web.dto.UserResponse;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.UUID;
@@ -41,4 +44,17 @@ public class UserController {
     public void delete(@PathVariable UUID id) {
         userFacade.delete(id);
     }
+
+    /**
+     * Frontend login/register sonrası bunu çağırıyor.
+     * Access token içinden userId(email claim’i) okuyup döndürüyoruz.
+     */
+    @GetMapping("/me")
+    public ResponseEntity<MeResponse> me(@AuthenticationPrincipal Jwt jwt) {
+        UUID userId = UUID.fromString(jwt.getSubject());
+        String email = jwt.getClaimAsString("email");
+        return ResponseEntity.ok(new MeResponse(userId, email));
+    }
+
+    public record MeResponse(UUID userId, String email) {}
 }

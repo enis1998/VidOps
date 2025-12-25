@@ -5,17 +5,17 @@ import jakarta.servlet.http.HttpServletResponse;
 import java.util.UUID;
 
 public interface RefreshTokenService {
-    // login/register sonrası
+    long getAccessTtlSeconds();
+
     String issueAndSetCookie(UUID userId, HttpServletResponse res);
 
-    // refresh endpoint için: verify + revoke old + issue new + cookie set
+    /**
+     * Validates old refresh token, revokes it, issues a new refresh token and sets cookie.
+     * Returns the userId.
+     */
     UUID rotate(String refreshToken, HttpServletResponse res);
 
-    // logout veya refresh’te eskiyi iptal etmek için
     void revoke(String refreshToken);
 
-    // logout
     void clearCookie(HttpServletResponse res);
-
-    long getAccessTtlSeconds();
 }

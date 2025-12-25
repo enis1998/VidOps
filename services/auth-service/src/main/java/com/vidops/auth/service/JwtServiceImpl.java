@@ -33,7 +33,7 @@ public class JwtServiceImpl implements JwtService {
                 .expiresAt(exp)
                 .subject(userId.toString())
                 .claim("email", email)
-                .claim("roles", rolesCsv) // "USER,ADMIN"
+                .claim("roles", rolesCsv == null ? "" : rolesCsv) // "USER,ADMIN"
                 .build();
 
         JwsHeader header = JwsHeader.with(MacAlgorithm.HS256).build();

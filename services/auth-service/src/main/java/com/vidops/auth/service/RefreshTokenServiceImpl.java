@@ -5,12 +5,17 @@ import com.vidops.auth.entity.RefreshToken;
 import com.vidops.auth.exception.InvalidRefreshTokenException;
 import com.vidops.auth.repository.RefreshTokenRepository;
 import jakarta.servlet.http.HttpServletResponse;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.ResponseCookie;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
 import java.security.SecureRandom;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
+import java.util.Base64;
 import java.util.UUID;
 
 @Service
@@ -20,8 +25,8 @@ public class RefreshTokenServiceImpl implements RefreshTokenService {
     private final AuthProperties props;
     private final SecureRandom random = new SecureRandom();
 
-    public RefreshTokenServiceImpl(RefreshTokenDao dao, AuthProperties props) {
-        this.dao = dao;
+    public RefreshTokenServiceImpl(RefreshTokenRepository refreshTokenRepository, AuthProperties props) {
+        this.refreshTokenRepository = refreshTokenRepository;
         this.props = props;
     }
 
@@ -36,7 +41,7 @@ public class RefreshTokenServiceImpl implements RefreshTokenService {
         String raw = generateToken();
         String hash = sha256Hex(raw);
 
-        Instant exp = Instant.now().plus(props.refresh().ttlDays(), ChronoUnit.DAYS);
+        Instant exp = Instant.now().plus(props.jwt().refreshTtlDays(), ChronoUnit.DAYS);
         refreshTokenRepository.save(RefreshToken.issue(userId, hash, exp));
 
         setRefreshCookie(raw, exp, res);
@@ -49,19 +54,20 @@ public class RefreshTokenServiceImpl implements RefreshTokenService {
         if (refreshToken == null || refreshToken.isBlank()) throw new InvalidRefreshTokenException();
 
         String oldHash = sha256Hex(refreshToken);
-        RefreshToken old = refreshTokenRepository.findByTokenHash(oldHash).orElseThrow(InvalidRefreshTokenException::new);
+        RefreshToken old = refreshTokenRepository.findByTokenHash(oldHash)
+                .orElseThrow(InvalidRefreshTokenException::new);
 
         Instant now = Instant.now();
         if (!old.isActive(now)) throw new InvalidRefreshTokenException();
 
-        // Issue new
+        // issue new
         String newRaw = generateToken();
         String newHash = sha256Hex(newRaw);
-        Instant newExp = now.plus(props.refresh().ttlSeconds(), ChronoUnit.DAYS);
+        Instant newExp = now.plus(props.jwt().refreshTtlDays(), ChronoUnit.DAYS);
 
         refreshTokenRepository.save(RefreshToken.issue(old.getUserId(), newHash, newExp));
 
-        // Revoke old and link replacement
+        // revoke old + link replacement
         old.revoke(newHash);
         refreshTokenRepository.save(old);
 
@@ -85,12 +91,12 @@ public class RefreshTokenServiceImpl implements RefreshTokenService {
 
     @Override
     public void clearCookie(HttpServletResponse res) {
-        ResponseCookie cookie = ResponseCookie.from(props.cookie().name(), "")
+        ResponseCookie cookie = ResponseCookie.from(props.cookies().refreshCookieName(), "")
                 .httpOnly(true)
-                .secure(props.cookie().secure())
-                .path(props.cookie().path())
-                .domain(nullIfBlank(props.cookie().domain()))
-                .sameSite(props.cookie().sameSite())
+                .secure(props.cookies().secure())
+                .path(nullIfBlank(props.cookies().path(), "/"))
+                .domain(nullIfBlank(props.cookies().domain()))
+                .sameSite(nullIfBlank(props.cookies().sameSite(), "Lax"))
                 .maxAge(0)
                 .build();
 
@@ -100,12 +106,12 @@ public class RefreshTokenServiceImpl implements RefreshTokenService {
     private void setRefreshCookie(String token, Instant expiresAt, HttpServletResponse res) {
         long maxAgeSeconds = Math.max(0, Instant.now().until(expiresAt, ChronoUnit.SECONDS));
 
-        ResponseCookie cookie = ResponseCookie.from(props.cookie().name(), token)
+        ResponseCookie cookie = ResponseCookie.from(props.cookies().refreshCookieName(), token)
                 .httpOnly(true)
-                .secure(props.cookie().secure())
-                .path(props.cookie().path())
-                .domain(nullIfBlank(props.cookie().domain()))
-                .sameSite(props.cookie().sameSite())
+                .secure(props.cookies().secure())
+                .path(nullIfBlank(props.cookies().path(), "/"))
+                .domain(nullIfBlank(props.cookies().domain()))
+                .sameSite(nullIfBlank(props.cookies().sameSite(), "Lax"))
                 .maxAge(maxAgeSeconds)
                 .build();
 
@@ -132,5 +138,9 @@ public class RefreshTokenServiceImpl implements RefreshTokenService {
 
     private static String nullIfBlank(String s) {
         return (s == null || s.isBlank()) ? null : s;
+    }
+
+    private static String nullIfBlank(String s, String defaultVal) {
+        return (s == null || s.isBlank()) ? defaultVal : s;
     }
 }

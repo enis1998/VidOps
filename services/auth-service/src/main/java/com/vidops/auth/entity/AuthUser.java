@@ -2,7 +2,6 @@ package com.vidops.auth.entity;
 
 import com.vidops.auth.enums.AuthProvider;
 import jakarta.persistence.*;
-import org.springframework.data.annotation.Id;
 
 import java.time.Instant;
 import java.util.UUID;
@@ -36,7 +35,7 @@ public class AuthUser {
     protected AuthUser() {
     }
 
-    public static AuthUser local(String email, String passwordHash) {
+    public static AuthUser createLocal(String email, String passwordHash) {
         AuthUser u = new AuthUser();
         u.id = UUID.randomUUID();
         u.email = email;
@@ -46,7 +45,7 @@ public class AuthUser {
         return u;
     }
 
-    public static AuthUser google(String email) {
+    public static AuthUser createGoogle(String email) {
         AuthUser u = new AuthUser();
         u.id = UUID.randomUUID();
         u.email = email;
