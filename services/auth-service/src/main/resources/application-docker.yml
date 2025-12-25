@@ -1,9 +1,14 @@
 spring:
-  jpa:
-    hibernate:
-      ddl-auto: update
+  datasource:
+    url: jdbc:postgresql://postgres-auth:5432/${AUTH_DB_NAME:vidops_auth}
+    username: ${AUTH_DB_USER:vidops}
+    password: ${AUTH_DB_PASSWORD:enis1234}
+
   kafka:
-    # In Docker, Kafka is reachable via the service name on the compose network
-    bootstrap-servers: ${KAFKA_BOOTSTRAP:kafka:9092}
-  flyway:
-    enabled: false
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:kafka:9092}
+
+vidops:
+  auth:
+    cookie:
+      secure: false   # https yoksa false; reverse proxy ile https'e geçince true yaparsın
+      same-site: Lax

@@ -6,9 +6,10 @@ spring:
     name: user-service
 
   datasource:
-    url: ${USER_DB_URL:jdbc:postgresql://localhost:5434/vidops_user}
-    username: ${USER_DB_USER:vidops}
-    password: ${USER_DB_PASSWORD:vidops}
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://postgres-user:5432/vidops_user}
+    username: ${SPRING_DATASOURCE_USERNAME:vidops}
+    password: ${SPRING_DATASOURCE_PASSWORD:vidops}
+
   jpa:
     hibernate:
       ddl-auto: validate
@@ -17,11 +18,12 @@ spring:
       hibernate:
         jdbc:
           time_zone: UTC
+
   flyway:
     enabled: true
 
   kafka:
-    bootstrap-servers: ${KAFKA_BOOTSTRAP:localhost:9092}
+    bootstrap-servers: ${KAFKA_BOOTSTRAP:kafka:9092}
     consumer:
       group-id: user-service
       auto-offset-reset: earliest
