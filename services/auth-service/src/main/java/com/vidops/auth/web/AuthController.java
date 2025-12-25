@@ -36,14 +36,18 @@ public class AuthController {
     }
 
     @PostMapping("/refresh")
-    public ResponseEntity<AuthResponse> refresh(@CookieValue(name = "refresh_token", required = false) String refreshToken,
-                                                HttpServletResponse res) {
+    public ResponseEntity<AuthResponse> refresh(
+            @CookieValue(name = "${vidops.security.cookies.refresh-cookie-name:VIDOPS_REFRESH}", required = false) String refreshToken,
+            HttpServletResponse res
+    ) {
         return ResponseEntity.ok(contract.refresh(refreshToken, res));
     }
 
     @PostMapping("/logout")
-    public ResponseEntity<Void> logout(@CookieValue(name = "refresh_token", required = false) String refreshToken,
-                                       HttpServletResponse res) {
+    public ResponseEntity<Void> logout(
+            @CookieValue(name = "${vidops.security.cookies.refresh-cookie-name:VIDOPS_REFRESH}", required = false) String refreshToken,
+            HttpServletResponse res
+    ) {
         contract.logout(refreshToken, res);
         return ResponseEntity.noContent().build();
     }

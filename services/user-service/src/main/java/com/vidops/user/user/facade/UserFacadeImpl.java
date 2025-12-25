@@ -22,24 +22,19 @@ public class UserFacadeImpl implements UserFacade {
         this.userMapper = userMapper;
     }
 
-    /**
-     * Rollback mantığı:
-     * - Bu method transaction boundary.
-     * - userService DB'ye yazarken hata verirse -> rollback.
-     * - mapper hata fırlatırsa (RuntimeException) -> rollback (DB write olduysa bile geri alınır).
-     */
     @Override
     @Transactional
     public UserResponse create(CreateUserRequest req) {
-        UserProfile entity = userMapper.toEntity(req);           // mapping
-        UserProfile saved  = userService.create(entity);         // business + persist
-        return userMapper.toResponse(saved);                     // mapping
+        UserProfile entity = userMapper.toEntity(req);
+        UserProfile saved  = userService.create(entity);
+        return userMapper.toResponse(saved);
     }
 
     @Override
     @Transactional(readOnly = true)
     public UserResponse get(UUID id) {
-        return userMapper.toResponse(userService.get(id));
+        UserProfile user = userService.getOrThrow(id);
+        return userMapper.toResponse(user);
     }
 
     @Override

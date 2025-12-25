@@ -103,6 +103,12 @@ public class RefreshTokenServiceImpl implements RefreshTokenService {
         res.addHeader(HttpHeaders.SET_COOKIE, cookie.toString());
     }
 
+    @Override
+    @Transactional
+    public long cleanupExpiredTokens() {
+        return refreshTokenRepository.deleteByExpiresAtBefore(Instant.now());
+    }
+
     private void setRefreshCookie(String token, Instant expiresAt, HttpServletResponse res) {
         long maxAgeSeconds = Math.max(0, Instant.now().until(expiresAt, ChronoUnit.SECONDS));
 

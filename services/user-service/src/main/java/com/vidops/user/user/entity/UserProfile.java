@@ -2,6 +2,7 @@ package com.vidops.user.user.entity;
 
 import com.vidops.user.user.enums.Plan;
 import jakarta.persistence.*;
+
 import java.time.Instant;
 import java.util.UUID;
 
@@ -38,6 +39,18 @@ public class UserProfile {
         this.fullName = fullName;
         this.plan = plan;
         this.credits = credits;
+    }
+
+    @PrePersist
+    public void prePersist() {
+        Instant now = Instant.now();
+        if (this.createdAt == null) this.createdAt = now;
+        if (this.updatedAt == null) this.updatedAt = now;
+    }
+
+    @PreUpdate
+    public void preUpdate() {
+        this.updatedAt = Instant.now();
     }
 
     public UUID getId() {
