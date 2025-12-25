@@ -28,7 +28,7 @@ public class AuthFacadeImpl implements AuthFacade {
     @Override
     @Transactional
     public AuthResponse register(RegisterRequest req, HttpServletResponse res) {
-        AuthUser user = authService.register(req.email(), req.password());
+        AuthUser user = authService.register(req.fullName(), req.email(), req.password());
         String refresh = refreshTokenService.issueAndSetCookie(user.getId(), res);
         return mapper.toAuthResponse(user, authService.issueAccessToken(user), refreshTokenService.getAccessTtlSeconds());
     }

@@ -1,8 +1,8 @@
 package com.vidops.auth.events;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Component;
-import tools.jackson.databind.ObjectMapper;
 
 @Component
 public class KafkaUserEventPublisher implements UserEventPublisher {
@@ -17,7 +17,11 @@ public class KafkaUserEventPublisher implements UserEventPublisher {
 
     @Override
     public void publishUserRegistered(UserRegisteredEvent event) {
-        byte[] payload = objectMapper.writeValueAsBytes(event);
-        kafkaTemplate.send("user.registered", event.userId().toString(), payload);
+        try {
+            byte[] payload = objectMapper.writeValueAsBytes(event);
+            kafkaTemplate.send("user.registered", event.userId().toString(), payload);
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to publish user.registered event", e);
+        }
     }
 }

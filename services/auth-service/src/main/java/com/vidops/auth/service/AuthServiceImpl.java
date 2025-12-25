@@ -42,7 +42,7 @@ public class AuthServiceImpl implements AuthService {
 
     @Override
     @Transactional
-    public AuthUser register(String email, String password) {
+    public AuthUser register(String fullName, String email, String password) {
         authUserRepository.findByEmail(email).ifPresent(u -> {
             throw new DuplicateEmailException(email);
         });
@@ -54,6 +54,7 @@ public class AuthServiceImpl implements AuthService {
         UserRegisteredEvent event = new UserRegisteredEvent(
                 saved.getId(),
                 saved.getEmail(),
+                fullName,
                 Instant.now()
         );
 
