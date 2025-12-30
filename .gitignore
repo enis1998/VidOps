@@ -35,3 +35,9 @@ build/
 ### Local environment files (do not commit secrets) ###
 .env
 .env.*
+
+node_modules
+dist
+.vite
+*.log
+

@@ -7,14 +7,20 @@ import com.vidops.auth.enums.AuthProvider;
 import com.vidops.auth.events.UserRegisteredEvent;
 import com.vidops.auth.exception.DuplicateEmailException;
 import com.vidops.auth.exception.InvalidCredentialsException;
+import com.vidops.auth.exception.InvalidGoogleTokenException;
 import com.vidops.auth.exception.UserNotFoundException;
 import com.vidops.auth.repository.AuthUserRepository;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.security.oauth2.jwt.Jwt;
+import org.springframework.security.oauth2.jwt.JwtDecoder;
+import org.springframework.security.oauth2.jwt.JwtException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
+import java.util.Locale;
 import java.util.UUID;
 
 @Service
@@ -25,19 +31,22 @@ public class AuthServiceImpl implements AuthService {
     private final JwtService jwtService;
     private final KafkaTemplate<String, byte[]> kafkaTemplate;
     private final ObjectMapper objectMapper;
+    private final JwtDecoder googleJwtDecoder;
 
     public AuthServiceImpl(
             AuthUserRepository authUserRepository,
             PasswordEncoder passwordEncoder,
             JwtService jwtService,
             KafkaTemplate<String, byte[]> kafkaTemplate,
-            ObjectMapper objectMapper
+            ObjectMapper objectMapper,
+            @Qualifier("googleJwtDecoder") JwtDecoder googleJwtDecoder
     ) {
         this.authUserRepository = authUserRepository;
         this.passwordEncoder = passwordEncoder;
         this.jwtService = jwtService;
         this.kafkaTemplate = kafkaTemplate;
         this.objectMapper = objectMapper;
+        this.googleJwtDecoder = googleJwtDecoder;
     }
 
     @Override
@@ -50,22 +59,9 @@ public class AuthServiceImpl implements AuthService {
         AuthUser user = AuthUser.createLocal(email, passwordEncoder.encode(password));
         AuthUser saved = authUserRepository.save(user);
 
-        // Kafka event publish
-        UserRegisteredEvent event = new UserRegisteredEvent(
-                saved.getId(),
-                saved.getEmail(),
-                fullName,
-                Instant.now()
-        );
+        String safeFullName = normalizeFullName(fullName, email);
 
-        try {
-            byte[] payload = objectMapper.writeValueAsBytes(event);
-            kafkaTemplate.send("user.registered", saved.getId().toString(), payload);
-        } catch (JsonProcessingException e) {
-            // İstersen burada loglayıp swallow edebilirsin, ama en azından uygulamayı çökertmesin.
-            // RuntimeException fırlatırsan register da fail olur.
-            throw new RuntimeException("Failed to serialize UserRegisteredEvent", e);
-        }
+        publishUserRegistered(saved.getId(), saved.getEmail(), safeFullName);
 
         return saved;
     }
@@ -101,7 +97,89 @@ public class AuthServiceImpl implements AuthService {
     }
 
     @Override
+    @Transactional
     public AuthUser googleLogin(String idToken) {
-        throw new UnsupportedOperationException("Google login is not implemented yet");
+        if (idToken == null || idToken.isBlank()) {
+            throw new InvalidGoogleTokenException();
+        }
+
+        final Jwt jwt;
+        try {
+            jwt = googleJwtDecoder.decode(idToken);
+        } catch (JwtException | IllegalArgumentException e) {
+            throw new InvalidGoogleTokenException();
+        }
+
+        String email = jwt.getClaimAsString("email");
+        Boolean emailVerified = jwt.getClaimAsBoolean("email_verified");
+        String fullName = jwt.getClaimAsString("name");
+
+        if (email == null || email.isBlank()) {
+            throw new InvalidGoogleTokenException();
+        }
+        if (emailVerified != null && !emailVerified) {
+            throw new InvalidGoogleTokenException();
+        }
+
+        // FullName boşsa fallback
+        String safeFullName = normalizeFullName(fullName, email);
+
+        // Aynı email var mı?
+        var existingOpt = authUserRepository.findByEmail(email);
+        if (existingOpt.isPresent()) {
+            AuthUser existing = existingOpt.get();
+
+            // Eğer bu email LOCAL hesapla kayıtlıysa, Google ile login yaptırmak istemiyorsan 409/duplicate at:
+            if (existing.getProvider() != AuthProvider.GOOGLE) {
+                throw new DuplicateEmailException(email);
+            }
+
+            return existing;
+        }
+
+        // Yeni Google user oluştur
+        AuthUser created = AuthUser.createGoogle(email);
+        AuthUser saved = authUserRepository.save(created);
+
+        // user-service profile oluştursun diye event
+        publishUserRegistered(saved.getId(), saved.getEmail(), safeFullName);
+
+        return saved;
+    }
+
+    private void publishUserRegistered(UUID userId, String email, String fullName) {
+        UserRegisteredEvent event = new UserRegisteredEvent(
+                userId,
+                email,
+                fullName,
+                Instant.now()
+        );
+
+        try {
+            byte[] payload = objectMapper.writeValueAsBytes(event);
+            kafkaTemplate.send("user.registered", userId.toString(), payload);
+        } catch (JsonProcessingException e) {
+            throw new RuntimeException("Failed to serialize UserRegisteredEvent", e);
+        }
+    }
+
+    private static String normalizeFullName(String fullName, String email) {
+        String v = (fullName == null) ? "" : fullName.trim();
+        if (!v.isBlank()) return v;
+
+        if (email == null) return "User";
+        String left = email.contains("@") ? email.substring(0, email.indexOf("@")) : email;
+        left = left.replace('.', ' ').replace('_', ' ').replace('-', ' ').trim();
+        if (left.isBlank()) return "User";
+
+        String[] parts = left.split("\\s+");
+        StringBuilder sb = new StringBuilder();
+        for (String p : parts) {
+            if (p.isBlank()) continue;
+            String t = p.toLowerCase(Locale.ROOT);
+            sb.append(Character.toUpperCase(t.charAt(0))).append(t.substring(1)).append(' ');
+        }
+        String out = sb.toString().trim();
+        return out.isBlank() ? "User" : out;
     }
 }

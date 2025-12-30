@@ -1,6 +1,7 @@
 package com.vidops.auth.facede;
 
 import com.vidops.auth.entity.AuthUser;
+import com.vidops.auth.exception.InvalidGoogleTokenException;
 import com.vidops.auth.mapper.AuthMapper;
 import com.vidops.auth.service.AuthService;
 import com.vidops.auth.service.RefreshTokenService;
@@ -44,7 +45,14 @@ public class AuthFacadeImpl implements AuthFacade {
     @Override
     @Transactional
     public AuthResponse googleLogin(GoogleLoginRequest req, HttpServletResponse res) {
-        AuthUser user = authService.googleLogin(req.idToken());
+        if (req == null) throw new InvalidGoogleTokenException();
+
+        // @JsonAlias sayesinde "credential" veya "idToken" gelse de buraya düşer.
+        String token = req.idToken();
+        if (token == null || token.isBlank()) throw new InvalidGoogleTokenException();
+
+        AuthUser user = authService.googleLogin(token);
+
         String refresh = refreshTokenService.issueAndSetCookie(user.getId(), res);
         return mapper.toAuthResponse(user, authService.issueAccessToken(user), refreshTokenService.getAccessTtlSeconds());
     }
@@ -52,10 +60,8 @@ public class AuthFacadeImpl implements AuthFacade {
     @Override
     @Transactional
     public AuthResponse refresh(String refreshToken, HttpServletResponse res) {
-        // rotate eski tokenı iptal eder + yeni cookie set eder + userId döner
         var userId = refreshTokenService.rotate(refreshToken, res);
         AuthUser user = authService.getUser(userId);
-
         return mapper.toAuthResponse(user, authService.issueAccessToken(user), refreshTokenService.getAccessTtlSeconds());
     }
 

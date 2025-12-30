@@ -84,6 +84,7 @@ services:
       KAFKA_BOOTSTRAP: kafka:9092
       JWT_SECRET_BASE64: ${JWT_SECRET_BASE64}
       JWT_ISSUER: ${JWT_ISSUER:-vidops.local}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID}
     ports:
       - "8081:8081"
     networks:
@@ -134,6 +135,8 @@ services:
     build:
       context: ./services/webapp/frontend
       dockerfile: Dockerfile
+      args:
+        VITE_GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID}
     container_name: vidops-frontend
     ports:
       - "8090:80"

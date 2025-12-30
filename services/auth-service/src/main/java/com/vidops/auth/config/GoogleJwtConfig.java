@@ -22,8 +22,13 @@ public class GoogleJwtConfig {
                 .withJwkSetUri("https://www.googleapis.com/oauth2/v3/certs")
                 .build();
 
-        OAuth2TokenValidator<Jwt> issuer =
-                JwtValidators.createDefaultWithIssuer("https://accounts.google.com");
+        // issuer: https://accounts.google.com OR accounts.google.com
+        OAuth2TokenValidator<Jwt> issuer = jwt -> {
+            String iss = jwt.getIssuer() != null ? jwt.getIssuer().toString() : "";
+            return ("https://accounts.google.com".equals(iss) || "accounts.google.com".equals(iss))
+                    ? OAuth2TokenValidatorResult.success()
+                    : OAuth2TokenValidatorResult.failure(new OAuth2Error("invalid_token", "Invalid issuer", null));
+        };
 
         OAuth2TokenValidator<Jwt> audience = jwt -> {
             List<String> aud = jwt.getAudience();
@@ -32,7 +37,10 @@ public class GoogleJwtConfig {
                     : OAuth2TokenValidatorResult.failure(new OAuth2Error("invalid_token", "Invalid audience", null));
         };
 
-        decoder.setJwtValidator(new DelegatingOAuth2TokenValidator<>(issuer, audience));
+        // exp/nbf gibi default kontroller
+        OAuth2TokenValidator<Jwt> withTimestamp = JwtValidators.createDefault();
+
+        decoder.setJwtValidator(new DelegatingOAuth2TokenValidator<>(withTimestamp, issuer, audience));
         return decoder;
     }
 }

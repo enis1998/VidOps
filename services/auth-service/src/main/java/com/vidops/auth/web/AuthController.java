@@ -31,7 +31,8 @@ public class AuthController {
     }
 
     @PostMapping("/google")
-    public ResponseEntity<AuthResponse> google(@Valid @RequestBody GoogleLoginRequest req, HttpServletResponse res) {
+    public ResponseEntity<AuthResponse> google(@RequestBody GoogleLoginRequest req, HttpServletResponse res) {
+        // Burada String'e çevirmiyoruz; Facade zaten token'ı seçip doğrulayacak.
         return ResponseEntity.ok(contract.googleLogin(req, res));
     }
 

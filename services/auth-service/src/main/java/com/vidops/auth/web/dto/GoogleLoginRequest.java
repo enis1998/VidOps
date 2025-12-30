@@ -1,7 +1,8 @@
 package com.vidops.auth.web.dto;
 
-import jakarta.validation.constraints.NotBlank;
+import com.fasterxml.jackson.annotation.JsonAlias;
 
 public record GoogleLoginRequest(
-        @NotBlank String idToken
+        @JsonAlias({"idToken", "credential"})
+        String idToken
 ) {}

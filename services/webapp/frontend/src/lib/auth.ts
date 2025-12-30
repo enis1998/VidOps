@@ -13,7 +13,7 @@ export type AuthResponse = {
 export async function register(fullName: string, email: string, password: string) {
   const out = await api<AuthResponse>("/api/auth/register", {
     method: "POST",
-    body: JSON.stringify({ fullName, email, password })
+    body: JSON.stringify({ fullName, email, password }),
   });
   localStorage.setItem(ACCESS_TOKEN_KEY, out.accessToken);
   return out;
@@ -22,7 +22,17 @@ export async function register(fullName: string, email: string, password: string
 export async function login(email: string, password: string) {
   const out = await api<AuthResponse>("/api/auth/login", {
     method: "POST",
-    body: JSON.stringify({ email, password })
+    body: JSON.stringify({ email, password }),
+  });
+  localStorage.setItem(ACCESS_TOKEN_KEY, out.accessToken);
+  return out;
+}
+
+// ✅ Google login (GIS ID token -> backend verify -> accessToken)
+export async function googleLogin(idToken: string) {
+  const out = await api<AuthResponse>("/api/auth/google", {
+    method: "POST",
+    body: JSON.stringify({ idToken }),
   });
   localStorage.setItem(ACCESS_TOKEN_KEY, out.accessToken);
   return out;
