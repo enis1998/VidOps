@@ -5,7 +5,6 @@ COPY pom.xml /workspace/pom.xml
 COPY services/auth-service/pom.xml /workspace/services/auth-service/pom.xml
 COPY services/user-service/pom.xml /workspace/services/user-service/pom.xml
 COPY services/api-gateway/pom.xml /workspace/services/api-gateway/pom.xml
-COPY services/webapp/pom.xml /workspace/services/webapp/pom.xml
 RUN mvn -q -e -DskipTests package || true
 
 COPY services/api-gateway/src /workspace/services/api-gateway/src

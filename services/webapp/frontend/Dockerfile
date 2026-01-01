@@ -1,25 +1,23 @@
-# ---- build stage ----
-FROM node:20-alpine AS build
+FROM node:18-alpine AS build
 WORKDIR /app
 
-# package + lock
-COPY package*.json ./
-COPY tsconfig*.json ./
-COPY vite.config.ts ./
-COPY index.html ./
-COPY src ./src
+# Vite env vars must be present at build time and must be prefixed with VITE_.
+ARG VITE_GOOGLE_CLIENT_ID
+ENV VITE_GOOGLE_CLIENT_ID=${VITE_GOOGLE_CLIENT_ID}
 
-# lock dosyan varsa en temizi:
-RUN npm install
+COPY package*.json ./
+RUN npm ci
+
+COPY . .
 RUN npm run build
 
-# ---- runtime stage ----
 FROM nginx:1.27-alpine
 
-# nginx config (SPA + /api proxy)
+# SPA + /api reverse proxy
 COPY nginx.conf /etc/nginx/conf.d/default.conf
 
-# build output
 COPY --from=build /app/dist /usr/share/nginx/html
 
 EXPOSE 80
+
+CMD ["nginx", "-g", "daemon off;"]

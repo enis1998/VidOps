@@ -24,4 +24,14 @@ public class KafkaUserEventPublisher implements UserEventPublisher {
             throw new RuntimeException("Failed to publish user.registered event", e);
         }
     }
+
+    @Override
+    public void publishUserDeleted(UserDeletedEvent event) {
+        try {
+            byte[] payload = objectMapper.writeValueAsBytes(event);
+            kafkaTemplate.send("user.deleted", event.userId().toString(), payload);
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to publish user.deleted event", e);
+        }
+    }
 }

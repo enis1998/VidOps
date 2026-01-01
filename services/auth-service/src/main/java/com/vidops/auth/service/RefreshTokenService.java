@@ -20,4 +20,7 @@ public interface RefreshTokenService {
     void clearCookie(HttpServletResponse res);
 
     long cleanupExpiredTokens();
+
+    // YENİ: kullanıcıya ait tüm refresh tokenları sil
+    long revokeAll(UUID userId);
 }

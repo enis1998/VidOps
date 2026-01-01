@@ -3,6 +3,7 @@ package com.vidops.auth.config;
 import com.nimbusds.jose.jwk.source.ImmutableSecret;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.Primary;
 import org.springframework.security.oauth2.jose.jws.MacAlgorithm;
 import org.springframework.security.oauth2.jwt.JwtDecoder;
 import org.springframework.security.oauth2.jwt.JwtEncoder;
@@ -23,6 +24,7 @@ public class JwtConfig {
         return new NimbusJwtEncoder(new ImmutableSecret<>(key));
     }
 
+    @Primary
     @Bean
     public JwtDecoder jwtDecoder(AuthProperties props) {
         byte[] secret = Base64.getDecoder().decode(props.jwt().secretBase64());

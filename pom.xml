@@ -12,7 +12,6 @@
     <module>services/api-gateway</module>
     <module>services/auth-service</module>
     <module>services/user-service</module>
-    <module>services/webapp</module>
 </modules>
 
   <properties>
