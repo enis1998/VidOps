@@ -13,21 +13,11 @@ public interface UserService {
 
     Optional<UserProfile> get(UUID id);
 
-    /**
-     * Facade mapper'a UserProfile vermek istediği için helper.
-     * Bulamazsa exception fırlatır.
-     */
     UserProfile getOrThrow(UUID id);
 
-    /**
-     * Sadece alan güncellemek için: fullName/plan/credits.
-     */
-    UserProfile update(UUID id, String fullName, Plan plan, Integer credits);
+    UserProfile update(UUID id, String fullName);
 
-    /**
-     * Komple entity save etmek istersen.
-     */
-    UserProfile update(UserProfile user);
+    UserProfile changePlan(UUID id, Plan newPlan);
 
     void delete(UUID id);
 

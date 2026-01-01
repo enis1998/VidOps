@@ -109,6 +109,12 @@ public class RefreshTokenServiceImpl implements RefreshTokenService {
         return refreshTokenRepository.deleteByExpiresAtBefore(Instant.now());
     }
 
+    @Override
+    @Transactional
+    public long revokeAll(UUID userId) {
+        return refreshTokenRepository.deleteByUserId(userId);
+    }
+
     private void setRefreshCookie(String token, Instant expiresAt, HttpServletResponse res) {
         long maxAgeSeconds = Math.max(0, Instant.now().until(expiresAt, ChronoUnit.SECONDS));
 

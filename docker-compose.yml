@@ -66,6 +66,16 @@ services:
     networks:
       - vidops-net
 
+  # DEV mail inbox (lokalde mail görmek için)
+  mailhog:
+    image: mailhog/mailhog:latest
+    container_name: mailhog
+    ports:
+      - "1025:1025"
+      - "8025:8025"
+    networks:
+      - vidops-net
+
   auth-service:
     build:
       context: .
@@ -76,6 +86,8 @@ services:
         condition: service_healthy
       kafka:
         condition: service_started
+      mailhog:
+        condition: service_started
     environment:
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres-auth:5432/${AUTH_DB_NAME:-vidops_auth}
       SPRING_DATASOURCE_USERNAME: ${AUTH_DB_USER:-vidops}
@@ -84,6 +96,20 @@ services:
       KAFKA_BOOTSTRAP: kafka:9092
       JWT_SECRET_BASE64: ${JWT_SECRET_BASE64}
       JWT_ISSUER: ${JWT_ISSUER:-vidops.local}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID}
+
+      # Email verification (DEV)
+      VIDOPS_PUBLIC_URL: ${VIDOPS_PUBLIC_URL:-http://localhost:8090}
+      VIDOPS_MAIL_FROM: ${VIDOPS_MAIL_FROM:-enisk50@gmail.com}
+
+      SPRING_MAIL_HOST: ${SPRING_MAIL_HOST:-smtp.gmail.com}
+      SPRING_MAIL_PORT: ${SPRING_MAIL_PORT:-587}
+      SPRING_MAIL_USERNAME: ${SPRING_MAIL_USERNAME}
+      SPRING_MAIL_PASSWORD: ${SPRING_MAIL_PASSWORD}
+
+      SPRING_MAIL_PROPERTIES_MAIL_SMTP_AUTH: "true"
+      SPRING_MAIL_PROPERTIES_MAIL_SMTP_STARTTLS_ENABLE: "true"
+
     ports:
       - "8081:8081"
     networks:
@@ -134,6 +160,8 @@ services:
     build:
       context: ./services/webapp/frontend
       dockerfile: Dockerfile
+      args:
+        VITE_GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID}
     container_name: vidops-frontend
     ports:
       - "8090:80"

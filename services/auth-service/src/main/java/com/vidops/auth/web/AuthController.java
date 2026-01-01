@@ -1,14 +1,15 @@
 package com.vidops.auth.web;
 
 import com.vidops.auth.facede.AuthFacade;
-import com.vidops.auth.web.dto.AuthResponse;
-import com.vidops.auth.web.dto.GoogleLoginRequest;
-import com.vidops.auth.web.dto.LoginRequest;
-import com.vidops.auth.web.dto.RegisterRequest;
+import com.vidops.auth.web.dto.*;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.validation.Valid;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.*;
+
+import java.util.UUID;
 
 @RestController
 @RequestMapping("/api/auth")
@@ -21,8 +22,22 @@ public class AuthController {
     }
 
     @PostMapping("/register")
-    public ResponseEntity<AuthResponse> register(@Valid @RequestBody RegisterRequest req, HttpServletResponse res) {
-        return ResponseEntity.ok(contract.register(req, res));
+    public ResponseEntity<RegisterResponse> register(@Valid @RequestBody RegisterRequest req, HttpServletResponse res) {
+        contract.register(req);
+        return ResponseEntity.status(201).body(new RegisterResponse("Kayıt oluşturuldu. Lütfen email doğrulama bağlantısını kontrol et."));
+    }
+
+    @GetMapping("/verify-email")
+    public ResponseEntity<Void> verifyEmail(@RequestParam("token") String token) {
+        contract.verifyEmail(token);
+        return ResponseEntity.noContent().build();
+    }
+
+    @PostMapping("/verify-email/resend")
+    public ResponseEntity<Void> resend(@RequestBody java.util.Map<String, String> body) {
+        String email = body.get("email");
+        contract.resendVerification(email);
+        return ResponseEntity.noContent().build();
     }
 
     @PostMapping("/login")
@@ -31,7 +46,7 @@ public class AuthController {
     }
 
     @PostMapping("/google")
-    public ResponseEntity<AuthResponse> google(@Valid @RequestBody GoogleLoginRequest req, HttpServletResponse res) {
+    public ResponseEntity<AuthResponse> google(@RequestBody GoogleLoginRequest req, HttpServletResponse res) {
         return ResponseEntity.ok(contract.googleLogin(req, res));
     }
 
@@ -49,6 +64,43 @@ public class AuthController {
             HttpServletResponse res
     ) {
         contract.logout(refreshToken, res);
+        return ResponseEntity.noContent().build();
+    }
+
+    @PatchMapping("/account/password")
+    public ResponseEntity<Void> changePassword(
+            @AuthenticationPrincipal Jwt jwt,
+            @Valid @RequestBody ChangePasswordRequest req,
+            HttpServletResponse res
+    ) {
+        UUID userId = UUID.fromString(jwt.getSubject());
+        contract.changePassword(userId, req, res);
+        return ResponseEntity.noContent().build();
+    }
+
+    /**
+     * Backward compatible endpoint.
+     * Frontend (older) calls: POST /api/auth/change-password
+     */
+    @PostMapping("/change-password")
+    public ResponseEntity<Void> changePasswordLegacy(
+            @AuthenticationPrincipal Jwt jwt,
+            @Valid @RequestBody ChangePasswordRequest req,
+            HttpServletResponse res
+    ) {
+        UUID userId = UUID.fromString(jwt.getSubject());
+        contract.changePassword(userId, req, res);
+        return ResponseEntity.noContent().build();
+    }
+
+    @DeleteMapping("/account")
+    public ResponseEntity<Void> deleteAccount(
+            @AuthenticationPrincipal Jwt jwt,
+            @CookieValue(name = "${vidops.security.cookies.refresh-cookie-name:VIDOPS_REFRESH}", required = false) String refreshToken,
+            HttpServletResponse res
+    ) {
+        UUID userId = UUID.fromString(jwt.getSubject());
+        contract.deleteAccount(userId, refreshToken, res);
         return ResponseEntity.noContent().build();
     }
 }

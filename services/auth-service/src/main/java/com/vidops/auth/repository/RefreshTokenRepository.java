@@ -9,4 +9,5 @@ import java.util.UUID;
 public interface RefreshTokenRepository extends JpaRepository<RefreshToken, UUID> {
     Optional<RefreshToken> findByTokenHash(String tokenHash);
     long deleteByExpiresAtBefore(java.time.Instant now);
+    long deleteByUserId(UUID userId);
 }

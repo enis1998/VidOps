@@ -4,13 +4,12 @@ import com.vidops.auth.entity.AuthUser;
 import com.vidops.auth.mapper.AuthMapper;
 import com.vidops.auth.service.AuthService;
 import com.vidops.auth.service.RefreshTokenService;
-import com.vidops.auth.web.dto.AuthResponse;
-import com.vidops.auth.web.dto.GoogleLoginRequest;
-import com.vidops.auth.web.dto.LoginRequest;
-import com.vidops.auth.web.dto.RegisterRequest;
+import com.vidops.auth.web.dto.*;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+
+import java.util.UUID;
 
 @Service
 public class AuthFacadeImpl implements AuthFacade {
@@ -27,42 +26,98 @@ public class AuthFacadeImpl implements AuthFacade {
 
     @Override
     @Transactional
-    public AuthResponse register(RegisterRequest req, HttpServletResponse res) {
-        AuthUser user = authService.register(req.fullName(), req.email(), req.password());
-        String refresh = refreshTokenService.issueAndSetCookie(user.getId(), res);
-        return mapper.toAuthResponse(user, authService.issueAccessToken(user), refreshTokenService.getAccessTtlSeconds());
+    public void register(RegisterRequest req) {
+        authService.register(req.fullName(), req.email(), req.password());
+        // NOT: register sonrası token/cookie yok. Email doğrulama linki ile devam.
     }
 
     @Override
-    @Transactional
+    public void verifyEmail(String token) {
+        authService.verifyEmail(token);
+    }
+
+    @Override
+    public void resendVerification(String email) {
+        authService.requestEmailVerification(email);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
     public AuthResponse login(LoginRequest req, HttpServletResponse res) {
         AuthUser user = authService.login(req.email(), req.password());
-        String refresh = refreshTokenService.issueAndSetCookie(user.getId(), res);
-        return mapper.toAuthResponse(user, authService.issueAccessToken(user), refreshTokenService.getAccessTtlSeconds());
+
+        // login -> refresh cookie set
+        refreshTokenService.issueAndSetCookie(user.getId(), res);
+
+        return mapper.toAuthResponse(
+                user,
+                authService.issueAccessToken(user),
+                refreshTokenService.getAccessTtlSeconds()
+        );
     }
 
     @Override
     @Transactional
     public AuthResponse googleLogin(GoogleLoginRequest req, HttpServletResponse res) {
-        AuthUser user = authService.googleLogin(req.idToken());
-        String refresh = refreshTokenService.issueAndSetCookie(user.getId(), res);
-        return mapper.toAuthResponse(user, authService.issueAccessToken(user), refreshTokenService.getAccessTtlSeconds());
+        // ✅ record alanını kullan
+        String token = req.idToken();
+
+        AuthUser user = authService.googleLogin(token);
+
+        // google login -> refresh cookie set
+        refreshTokenService.issueAndSetCookie(user.getId(), res);
+
+        return mapper.toAuthResponse(
+                user,
+                authService.issueAccessToken(user),
+                refreshTokenService.getAccessTtlSeconds()
+        );
     }
 
     @Override
     @Transactional
     public AuthResponse refresh(String refreshToken, HttpServletResponse res) {
-        // rotate eski tokenı iptal eder + yeni cookie set eder + userId döner
-        var userId = refreshTokenService.rotate(refreshToken, res);
+        // ✅ interface’e uygun: rotate(refreshToken, res)
+        UUID userId = refreshTokenService.rotate(refreshToken, res);
+
         AuthUser user = authService.getUser(userId);
 
-        return mapper.toAuthResponse(user, authService.issueAccessToken(user), refreshTokenService.getAccessTtlSeconds());
+        return mapper.toAuthResponse(
+                user,
+                authService.issueAccessToken(user),
+                refreshTokenService.getAccessTtlSeconds()
+        );
     }
 
     @Override
     @Transactional
     public void logout(String refreshToken, HttpServletResponse res) {
-        if (refreshToken != null) refreshTokenService.revoke(refreshToken);
+        if (refreshToken != null && !refreshToken.isBlank()) {
+            refreshTokenService.revoke(refreshToken);
+        }
+        refreshTokenService.clearCookie(res);
+    }
+
+    @Override
+    @Transactional
+    public void deleteAccount(UUID userId, String refreshToken, HttpServletResponse res) {
+        // refresh cookie + db tokenları temizle
+        if (refreshToken != null && !refreshToken.isBlank()) {
+            refreshTokenService.revoke(refreshToken);
+        }
+        refreshTokenService.revokeAll(userId);
+        refreshTokenService.clearCookie(res);
+
+        // auth user sil + user.deleted event publish (service içinde)
+        authService.deleteAccount(userId);
+    }
+
+    @Override
+    @Transactional
+    public void changePassword(UUID userId, ChangePasswordRequest req, HttpServletResponse res) {
+        authService.changePassword(userId, req.currentPassword(), req.newPassword());
+
+        refreshTokenService.revokeAll(userId);
         refreshTokenService.clearCookie(res);
     }
 }
