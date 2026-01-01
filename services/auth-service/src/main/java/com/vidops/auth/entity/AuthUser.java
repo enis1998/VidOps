@@ -16,6 +16,15 @@ public class AuthUser {
     @Column(nullable = false)
     private String email;
 
+    @Column(name = "email_verified", nullable = false)
+    private boolean emailVerified = false;
+
+    @Column(name = "email_verification_token_hash")
+    private String emailVerificationTokenHash;
+
+    @Column(name = "email_verification_expires_at")
+    private Instant emailVerificationExpiresAt;
+
     @Column(name = "password_hash", nullable = false)
     private String passwordHash;
 
@@ -42,6 +51,7 @@ public class AuthUser {
         u.passwordHash = passwordHash;
         u.provider = AuthProvider.LOCAL;
         u.roles = "USER";
+        u.emailVerified = false;
         return u;
     }
 
@@ -52,7 +62,19 @@ public class AuthUser {
         u.passwordHash = UUID.randomUUID().toString(); // local password login olmasın diye dummy
         u.provider = AuthProvider.GOOGLE;
         u.roles = "USER";
+        u.emailVerified = true;
         return u;
+    }
+
+    public void markVerificationRequested(String tokenHash, Instant expiresAt) {
+        this.emailVerificationTokenHash = tokenHash;
+        this.emailVerificationExpiresAt = expiresAt;
+    }
+
+    public void markVerified() {
+        this.emailVerified = true;
+        this.emailVerificationTokenHash = null;
+        this.emailVerificationExpiresAt = null;
     }
 
     @PrePersist
@@ -81,6 +103,30 @@ public class AuthUser {
 
     public void setEmail(String email) {
         this.email = email;
+    }
+
+    public boolean isEmailVerified() {
+        return emailVerified;
+    }
+
+    public void setEmailVerified(boolean emailVerified) {
+        this.emailVerified = emailVerified;
+    }
+
+    public String getEmailVerificationTokenHash() {
+        return emailVerificationTokenHash;
+    }
+
+    public void setEmailVerificationTokenHash(String emailVerificationTokenHash) {
+        this.emailVerificationTokenHash = emailVerificationTokenHash;
+    }
+
+    public Instant getEmailVerificationExpiresAt() {
+        return emailVerificationExpiresAt;
+    }
+
+    public void setEmailVerificationExpiresAt(Instant emailVerificationExpiresAt) {
+        this.emailVerificationExpiresAt = emailVerificationExpiresAt;
     }
 
     public String getPasswordHash() {

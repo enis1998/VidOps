@@ -7,9 +7,9 @@ import java.time.Instant;
 import java.util.UUID;
 
 @Entity
+@Table(name = "user_profiles")
 public class UserProfile {
     @Id
-    @GeneratedValue
     private UUID id;
 
     @Column(nullable = false)

@@ -1,5 +1,6 @@
 package com.vidops.user.user.mapper;
 
+import com.vidops.user.user.enums.Plan;
 import com.vidops.user.user.web.dto.CreateUserRequest;
 import com.vidops.user.user.web.dto.UserResponse;
 import com.vidops.user.user.entity.UserProfile;
@@ -9,7 +10,7 @@ import org.springframework.stereotype.Component;
 public class UserMapper {
 
     public UserProfile toEntity(CreateUserRequest req) {
-        return new UserProfile(req.email(), req.fullName(), req.plan(), req.credits());
+        return new UserProfile(req.email(), req.fullName(), Plan.FREE, 0);
     }
 
     public UserResponse toResponse(UserProfile u) {

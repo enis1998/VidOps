@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 
 import { Brand } from "../components/Brand";
-import { login, loadMe, clearAuth, googleLogin } from "../lib/auth";
+import { ApiError } from "../lib/api";
+import { clearAuth, googleLogin, login, loadMe, resendVerification } from "../lib/auth";
 
 declare global {
   interface Window {
@@ -14,7 +15,7 @@ function PublicBg() {
   return (
       <>
         <div className="fixed inset-0 -z-10 bg-slate-50" />
-        <div className="fixed inset-0 -z-10 bg-[radial-gradient(80%_60%_at_12%_0%,rgba(37,99,235,0.22),transparent_60%),radial-gradient(70%_55%_at_88%_0%,rgba(99,102,241,0.18),transparent_60%),radial-gradient(65%_60%_at_50%_100%,rgba(14,165,233,0.16),transparent_60%)]" />
+        <div className="fixed inset-0 -z-10 bg-[radial-gradient(65%_60%_at_50%_100%,rgba(14,165,233,0.16),transparent_60%)]" />
         <div
             className="fixed inset-0 -z-10 opacity-[0.22]"
             style={{
@@ -25,23 +26,69 @@ function PublicBg() {
               WebkitMaskImage: "radial-gradient(65% 55% at 50% 10%, black 0%, transparent 70%)",
             }}
         />
-        <div className="noiseOverlay" />
       </>
   );
 }
 
-/**
- * Google Sign-In Button (GIS)
- * - index.html içinde script olmalı: https://accounts.google.com/gsi/client
- * - callback: resp.credential -> ID token
- */
-function GoogleSignInButton({
-                              clientId,
-                              onCredential,
-                              disabled,
-                            }: {
+function Badge({ children }: { children: React.ReactNode }) {
+  return (
+      <span className="inline-flex items-center rounded-full border border-slate-200 bg-white/70 px-3 py-1 text-xs font-semibold text-slate-700 backdrop-blur">
+      {children}
+    </span>
+  );
+}
+
+function Msg({ type, text }: { type: "ok" | "err"; text: string }) {
+  return (
+      <div
+          className={
+            type === "ok"
+                ? "rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800"
+                : "rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800"
+          }
+      >
+        {text}
+      </div>
+  );
+}
+
+function Field({
+                 label,
+                 type,
+                 value,
+                 onChange,
+                 placeholder,
+                 disabled,
+               }: {
+  label: string;
+  type: string;
+  value: string;
+  onChange: (v: string) => void;
+  placeholder?: string;
+  disabled?: boolean;
+}) {
+  return (
+      <label className="block">
+        <div className="mb-2 text-sm font-semibold text-slate-900">{label}</div>
+        <input
+            type={type}
+            value={value}
+            onChange={(e) => onChange(e.target.value)}
+            placeholder={placeholder}
+            disabled={disabled}
+            className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 shadow-sm outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-500/15 disabled:opacity-60"
+        />
+      </label>
+  );
+}
+
+function GoogleButton({
+                        clientId,
+                        onCredential,
+                        disabled,
+                      }: {
   clientId: string;
-  onCredential: (idToken: string) => Promise<void>;
+  onCredential: (idToken: string) => void;
   disabled?: boolean;
 }) {
   const divRef = useRef<HTMLDivElement | null>(null);
@@ -61,35 +108,28 @@ function GoogleSignInButton({
   useEffect(() => {
     if (!ready || !divRef.current || !clientId || disabled) return;
 
-    // re-render safety
     divRef.current.innerHTML = "";
 
-    window.google.accounts.id.initialize({
-      client_id: clientId,
-      callback: async (resp: any) => {
-        const idToken = resp?.credential;
-        if (typeof idToken === "string" && idToken.length > 0) {
-          await onCredential(idToken);
-        }
-      },
-    });
+    try {
+      window.google.accounts.id.initialize({
+        client_id: clientId,
+        callback: (resp: any) => {
+          const cred = resp?.credential;
+          if (typeof cred === "string" && cred.length > 0) onCredential(cred);
+        },
+      });
 
-    window.google.accounts.id.renderButton(divRef.current, {
-      theme: "outline",
-      size: "large",
-      shape: "pill",
-      width: 360,
-      text: "continue_with",
-    });
-
-    return () => {
-      try {
-        window.google?.accounts?.id?.cancel?.();
-      } catch {
-        // ignore
-      }
-    };
-  }, [ready, clientId, onCredential, disabled]);
+      window.google.accounts.id.renderButton(divRef.current, {
+        theme: "outline",
+        size: "large",
+        text: "continue_with",
+        shape: "pill",
+        width: 320,
+      });
+    } catch {
+      // ignore
+    }
+  }, [ready, clientId, disabled, onCredential]);
 
   return (
       <div className={disabled ? "pointer-events-none opacity-60" : ""}>
@@ -98,32 +138,108 @@ function GoogleSignInButton({
   );
 }
 
+function safeNextParam(next: string | null): string {
+  if (!next) return "/app";
+  if (!next.startsWith("/")) return "/app";
+  if (next.startsWith("/login") || next.startsWith("/register") || next.startsWith("/verify-email")) return "/app";
+  return next;
+}
+
+function isEmailNotVerified(err: unknown) {
+  if (!(err instanceof ApiError)) return false;
+  if (err.status !== 403) return false;
+  const msg = (err.message || "").toLowerCase();
+  const bodyErr = (err.body?.error || err.body?.message || "").toLowerCase();
+  return msg.includes("email_not_verified") || bodyErr.includes("email_not_verified");
+}
+
+function mapLoginError(err: unknown): string {
+  if (err instanceof ApiError) {
+    if (isEmailNotVerified(err)) return "Email doğrulanmadı. Gelen kutunu kontrol et veya doğrulama mailini yeniden gönder.";
+    if (err.status === 401) return "Email veya şifre hatalı.";
+    if (err.status === 403) return "Bu işlem için yetkin yok.";
+    if (err.status >= 500) return "Sunucu hatası. Lütfen tekrar dene.";
+    return err.message || "Giriş başarısız.";
+  }
+  const anyErr = err as any;
+  return anyErr?.message || "Giriş başarısız.";
+}
+
 export default function LoginPage() {
   const navigate = useNavigate();
+  const location = useLocation();
 
   const googleClientId = (import.meta.env.VITE_GOOGLE_CLIENT_ID as string) || "";
 
-  const [email, setEmail] = useState("");
+  const sp = new URLSearchParams(location.search);
+  const next = safeNextParam(sp.get("next"));
+  const reason = sp.get("reason") || "";
+  const prefillEmail = sp.get("email") || "";
+
+  const [email, setEmail] = useState(prefillEmail);
   const [password, setPassword] = useState("");
 
   const [loading, setLoading] = useState(false);
   const [msg, setMsg] = useState<{ type: "ok" | "err"; text: string } | null>(null);
+  const [needsVerify, setNeedsVerify] = useState(false);
+
+  useEffect(() => {
+    if (reason === "verify_sent") {
+      setMsg({ type: "ok", text: "Kayıt oluşturuldu. Lütfen email doğrulama bağlantısını kontrol et." });
+    }
+    if (reason === "verified") {
+      setMsg({ type: "ok", text: "Email doğrulandı. Şimdi giriş yapabilirsin." });
+    }
+    if (reason === "expired") {
+      setMsg({ type: "err", text: "Oturum süresi doldu. Lütfen tekrar giriş yap." });
+    }
+    if (reason === "password_changed") {
+      setMsg({ type: "ok", text: "Şifren güncellendi. Lütfen yeniden giriş yap." });
+    }
+    if (reason === "deleted") {
+      setMsg({ type: "ok", text: "Hesabın silindi." });
+    }
+    if (reason === "error") {
+      setMsg({ type: "err", text: "Bir hata oluştu. Lütfen tekrar giriş yap." });
+    }
+  }, [reason]);
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (loading) return;
 
-    setLoading(true);
     setMsg(null);
+    setNeedsVerify(false);
+    setLoading(true);
 
     try {
       await login(email.trim(), password);
       await loadMe();
-      setMsg({ type: "ok", text: "Giriş başarılı. Yönlendiriliyorsun..." });
-      navigate("/app", { replace: true });
-    } catch (err: any) {
+      navigate(next, { replace: true });
+    } catch (err: unknown) {
+      if (isEmailNotVerified(err)) setNeedsVerify(true);
       clearAuth();
-      setMsg({ type: "err", text: err?.message || "Giriş yapılamadı" });
+      setMsg({ type: "err", text: mapLoginError(err) });
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function onResend() {
+    if (loading) return;
+    if (!email.trim()) {
+      setMsg({ type: "err", text: "Doğrulama maili göndermek için email gir." });
+      return;
+    }
+
+    setLoading(true);
+    setMsg(null);
+
+    try {
+      await resendVerification(email.trim());
+      setMsg({ type: "ok", text: "Doğrulama maili yeniden gönderildi. Lütfen gelen kutunu kontrol et." });
+    } catch (err: unknown) {
+      setMsg({ type: "err", text: mapLoginError(err) });
     } finally {
       setLoading(false);
     }
@@ -134,15 +250,15 @@ export default function LoginPage() {
 
     setLoading(true);
     setMsg(null);
+    setNeedsVerify(false);
 
     try {
       await googleLogin(idToken);
       await loadMe();
-      setMsg({ type: "ok", text: "Google ile giriş başarılı. Yönlendiriliyorsun..." });
-      navigate("/app", { replace: true });
-    } catch (err: any) {
+      navigate(next, { replace: true });
+    } catch {
       clearAuth();
-      setMsg({ type: "err", text: err?.message || "Google ile giriş başarısız" });
+      setMsg({ type: "err", text: "Google ile giriş başarısız. Lütfen tekrar dene." });
     } finally {
       setLoading(false);
     }
@@ -152,209 +268,100 @@ export default function LoginPage() {
       <div className="min-h-screen text-slate-900">
         <PublicBg />
 
-        {/* Top nav */}
         <header className="sticky top-[44px] z-20">
-          <div className="mx-auto max-w-7xl px-4">
-            <div className="mt-4 flex items-center justify-between rounded-2xl border border-slate-200 bg-white/75 px-4 py-3 backdrop-blur">
+          <div className="mx-auto max-w-7xl px-4 py-4">
+            <div className="flex items-center justify-between rounded-2xl border border-slate-200/80 bg-white/70 px-4 py-3 backdrop-blur">
               <Brand />
-              <nav className="flex items-center gap-2">
-                <Link
-                    to="/"
-                    className="hidden sm:inline-flex rounded-xl px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-white/80 hover:text-slate-900"
-                >
-                  Ana sayfa
+              <div className="hidden sm:flex items-center gap-2">
+                <Badge>Launch: Jan 2, 2026</Badge>
+                <Link to="/" className="rounded-2xl px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-100 transition">
+                  Landing
                 </Link>
-                <Link
-                    to="/register"
-                    className="inline-flex rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 shadow-sm"
-                >
-                  Kayıt ol
-                </Link>
-              </nav>
+              </div>
             </div>
           </div>
         </header>
 
-        {/* Content */}
-        <main className="mx-auto max-w-7xl px-4 pt-10 pb-16">
-          <div className="grid grid-cols-1 gap-10 lg:grid-cols-2 lg:items-center">
-            {/* Left */}
-            <section>
-              <div className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white/70 px-3 py-1.5 text-xs font-semibold text-slate-700 backdrop-blur">
-                <span className="h-2 w-2 rounded-full bg-emerald-500 shadow-[0_0_0_6px_rgba(16,185,129,0.18)]" />
-                Erken erişim
+        <main className="mx-auto max-w-7xl px-4 py-10">
+          <div className="grid grid-cols-1 gap-8 lg:grid-cols-2">
+            <section className="flex flex-col justify-center">
+              <div className="inline-flex w-fit items-center gap-2 rounded-full border border-slate-200 bg-white/70 px-3 py-1 text-xs font-semibold text-slate-700 backdrop-blur">
+                aiboxio • Prompt → Video → Publish
               </div>
 
-              <h1 className="mt-4 text-4xl font-semibold tracking-tight sm:text-5xl">
-                İçerik üretimini <span className="text-blue-700">tek panelden</span> yönet.
-              </h1>
+              <h1 className="mt-4 text-3xl font-semibold tracking-tight text-slate-900 sm:text-4xl">Giriş yap</h1>
 
-              <p className="mt-4 text-base text-slate-600 sm:text-lg">
-                Studio’da promptunu kur, taslaklarını düzenle, takvime yerleştir ve yayın akışını takip et.
+              <p className="mt-3 max-w-xl text-slate-600">
+                Hesabına giriş yap. Local hesaplarda email doğrulama gerekir.
               </p>
-
-              <div className="mt-6 grid grid-cols-1 gap-3 sm:grid-cols-2">
-                <div className="rounded-2xl border border-slate-200 bg-white/75 p-4 backdrop-blur">
-                  <div className="text-sm font-semibold">Studio</div>
-                  <div className="mt-1 text-sm text-slate-600">Konu + platform + süre seç, prompt otomatik oluşsun.</div>
-                </div>
-                <div className="rounded-2xl border border-slate-200 bg-white/75 p-4 backdrop-blur">
-                  <div className="text-sm font-semibold">Yayın Takvimi</div>
-                  <div className="mt-1 text-sm text-slate-600">İçerikleri sıraya al, haftalık planı tek ekranda gör.</div>
-                </div>
-                <div className="rounded-2xl border border-slate-200 bg-white/75 p-4 backdrop-blur">
-                  <div className="text-sm font-semibold">Kütüphane</div>
-                  <div className="mt-1 text-sm text-slate-600">Taslakları ve geçmiş içerikleri düzenli şekilde sakla.</div>
-                </div>
-                <div className="rounded-2xl border border-slate-200 bg-white/75 p-4 backdrop-blur">
-                  <div className="text-sm font-semibold">Güven</div>
-                  <div className="mt-1 text-sm text-slate-600">Oturum yönetimi güvenli şekilde yapılır.</div>
-                </div>
-              </div>
-
-              <div className="mt-6 flex flex-wrap items-center gap-3 text-xs text-slate-600">
-              <span className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white/70 px-3 py-1.5 backdrop-blur">
-                <span className="h-1.5 w-1.5 rounded-full bg-blue-600" />
-                Türkçe arayüz
-              </span>
-                <span className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white/70 px-3 py-1.5 backdrop-blur">
-                <span className="h-1.5 w-1.5 rounded-full bg-blue-600" />
-                Tek mavi tema
-              </span>
-                <span className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white/70 px-3 py-1.5 backdrop-blur">
-                <span className="h-1.5 w-1.5 rounded-full bg-blue-600" />
-                Erken erişim güncellemeleri
-              </span>
-              </div>
             </section>
 
-            {/* Right */}
-            <section className="lg:justify-self-end lg:w-[440px]">
-              <div className="rounded-3xl border border-slate-200 bg-white/80 p-6 shadow-[0_25px_80px_rgba(15,23,42,0.10)] backdrop-blur">
-                <div className="flex items-start justify-between gap-3">
+            <section className="lg:pl-10">
+              <div className="rounded-3xl border border-slate-200/80 bg-white/70 p-6 shadow-soft backdrop-blur">
+                <div className="flex items-center justify-between">
                   <div>
-                    <div className="text-xl font-semibold">Giriş yap</div>
-                    <div className="mt-1 text-sm text-slate-600">aiboxio hesabınla devam et</div>
+                    <div className="text-sm text-slate-500">Hoş geldin</div>
+                    <div className="text-lg font-semibold">Giriş</div>
                   </div>
-                  <span className="rounded-full bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-700 ring-1 ring-blue-100">
-                  Beta
-                </span>
+                  <Link
+                      to={`/register?next=${encodeURIComponent(next)}`}
+                      className="rounded-2xl px-3 py-2 text-sm font-semibold text-blue-700 hover:bg-blue-50 transition"
+                  >
+                    Kayıt ol
+                  </Link>
                 </div>
 
-                {/* ✅ Google sign-in */}
-                <div className="mt-5">
-                  {googleClientId ? (
-                      <GoogleSignInButton
-                          clientId={googleClientId}
-                          onCredential={onGoogleCredential}
-                          disabled={loading}
-                      />
-                  ) : (
-                      <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-xs text-slate-600">
-                        Google Client ID yok. <span className="font-semibold">VITE_GOOGLE_CLIENT_ID</span> tanımla.
-                      </div>
-                  )}
+                <form onSubmit={onSubmit} className="mt-6 space-y-4">
+                  <Field label="Email" type="email" value={email} onChange={setEmail} placeholder="ornek@mail.com" disabled={loading} />
+                  <Field label="Şifre" type="password" value={password} onChange={setPassword} placeholder="••••••••" disabled={loading} />
 
-                  <div className="mt-4 flex items-center gap-3">
-                    <div className="h-px flex-1 bg-slate-200" />
-                    <div className="text-xs text-slate-500">veya</div>
-                    <div className="h-px flex-1 bg-slate-200" />
-                  </div>
-                </div>
-
-                <form onSubmit={onSubmit} className="mt-4 space-y-4">
-                  <div>
-                    <label className="text-sm font-semibold text-slate-700">E-posta</label>
-                    <input
-                        value={email}
-                        onChange={(e) => setEmail(e.target.value)}
-                        type="email"
-                        required
-                        placeholder="you@aiboxio.com"
-                        className="mt-2 w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none focus:ring-4 focus:ring-blue-100"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="text-sm font-semibold text-slate-700">Şifre</label>
-                    <input
-                        value={password}
-                        onChange={(e) => setPassword(e.target.value)}
-                        type="password"
-                        required
-                        placeholder="••••••••"
-                        className="mt-2 w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none focus:ring-4 focus:ring-blue-100"
-                    />
-                  </div>
+                  {msg && <Msg type={msg.type} text={msg.text} />}
 
                   <button
                       type="submit"
                       disabled={loading}
-                      className="w-full rounded-2xl bg-blue-600 px-4 py-3 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-60 shadow-sm"
+                      className="w-full rounded-2xl bg-blue-600 px-4 py-3 text-sm font-semibold text-white shadow-sm hover:bg-blue-700 transition disabled:opacity-60"
                   >
-                    {loading ? "Giriş yapılıyor..." : "Giriş yap"}
+                    {loading ? "İşleniyor..." : "Giriş yap"}
                   </button>
 
-                  {msg && (
-                      <div
-                          className={
-                              "rounded-2xl px-4 py-3 text-sm ring-1 " +
-                              (msg.type === "ok"
-                                  ? "bg-emerald-50 text-emerald-800 ring-emerald-100"
-                                  : "bg-rose-50 text-rose-800 ring-rose-100")
-                          }
+                  {needsVerify && (
+                      <button
+                          type="button"
+                          onClick={onResend}
+                          disabled={loading}
+                          className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-800 hover:bg-slate-50 transition disabled:opacity-60"
                       >
-                        {msg.text}
-                      </div>
+                        Doğrulama mailini yeniden gönder
+                      </button>
                   )}
-
-                  <div className="text-xs text-slate-600">
-                    Devam ederek{" "}
-                    <Link className="font-semibold text-slate-800 hover:underline" to="/terms">
-                      Kullanım Şartları
-                    </Link>{" "}
-                    ve{" "}
-                    <Link className="font-semibold text-slate-800 hover:underline" to="/privacy">
-                      Gizlilik Politikası
-                    </Link>
-                    'nı kabul etmiş olursun.
-                  </div>
-
-                  <div className="pt-2">
-                    <div className="text-xs text-slate-500">Hesabın yok mu?</div>
-                    <Link
-                        to="/register"
-                        className="mt-2 inline-flex w-full justify-center rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-800 hover:bg-slate-50"
-                    >
-                      Kayıt ol
-                    </Link>
-                  </div>
                 </form>
-              </div>
 
-              <div className="mt-4 text-center text-xs text-slate-500">
-                Sorun mu var?{" "}
-                <a className="font-semibold text-slate-700 hover:underline" href="mailto:support@aiboxio.com">
-                  support@aiboxio.com
-                </a>
+                <div className="my-6 flex items-center gap-3">
+                  <div className="h-px flex-1 bg-slate-200" />
+                  <div className="text-xs font-semibold text-slate-500">veya</div>
+                  <div className="h-px flex-1 bg-slate-200" />
+                </div>
+
+                <div className="flex justify-center">
+                  <GoogleButton clientId={googleClientId} onCredential={onGoogleCredential} disabled={loading || !googleClientId} />
+                </div>
+
+                {!googleClientId && (
+                    <div className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+                      Google giriş için <span className="font-semibold">VITE_GOOGLE_CLIENT_ID</span> gerekli.
+                    </div>
+                )}
+
+                <div className="mt-6 text-xs text-slate-500">
+                  Email doğrulama linkini açtıysan:{" "}
+                  <Link className="font-semibold text-blue-700 hover:underline" to="/verify-email">
+                    Doğrulama sayfası
+                  </Link>
+                </div>
               </div>
             </section>
           </div>
-
-          <footer className="mt-14 flex flex-col items-center justify-between gap-3 border-t border-slate-200/70 pt-6 text-xs text-slate-500 sm:flex-row">
-            <div>© {new Date().getFullYear()} aiboxio</div>
-            <div className="flex items-center gap-4">
-              <Link to="/privacy" className="hover:underline">
-                Gizlilik
-              </Link>
-              <Link to="/terms" className="hover:underline">
-                Şartlar
-              </Link>
-              <a className="hover:underline" href="mailto:hello@aiboxio.com">
-                İletişim
-              </a>
-            </div>
-          </footer>
         </main>
       </div>
   );

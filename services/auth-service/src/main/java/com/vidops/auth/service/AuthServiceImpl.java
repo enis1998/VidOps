@@ -1,17 +1,13 @@
 package com.vidops.auth.service;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.vidops.auth.entity.AuthUser;
 import com.vidops.auth.enums.AuthProvider;
+import com.vidops.auth.events.UserDeletedEvent;
+import com.vidops.auth.events.UserEventPublisher;
 import com.vidops.auth.events.UserRegisteredEvent;
-import com.vidops.auth.exception.DuplicateEmailException;
-import com.vidops.auth.exception.InvalidCredentialsException;
-import com.vidops.auth.exception.InvalidGoogleTokenException;
-import com.vidops.auth.exception.UserNotFoundException;
+import com.vidops.auth.exception.*;
 import com.vidops.auth.repository.AuthUserRepository;
 import org.springframework.beans.factory.annotation.Qualifier;
-import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.security.oauth2.jwt.JwtDecoder;
@@ -29,24 +25,24 @@ public class AuthServiceImpl implements AuthService {
     private final AuthUserRepository authUserRepository;
     private final PasswordEncoder passwordEncoder;
     private final JwtService jwtService;
-    private final KafkaTemplate<String, byte[]> kafkaTemplate;
-    private final ObjectMapper objectMapper;
     private final JwtDecoder googleJwtDecoder;
+    private final UserEventPublisher userEventPublisher;
+    private final EmailVerificationService emailVerificationService;
 
     public AuthServiceImpl(
             AuthUserRepository authUserRepository,
             PasswordEncoder passwordEncoder,
             JwtService jwtService,
-            KafkaTemplate<String, byte[]> kafkaTemplate,
-            ObjectMapper objectMapper,
-            @Qualifier("googleJwtDecoder") JwtDecoder googleJwtDecoder
+            @Qualifier("googleJwtDecoder") JwtDecoder googleJwtDecoder,
+            UserEventPublisher userEventPublisher,
+            EmailVerificationService emailVerificationService
     ) {
         this.authUserRepository = authUserRepository;
         this.passwordEncoder = passwordEncoder;
         this.jwtService = jwtService;
-        this.kafkaTemplate = kafkaTemplate;
-        this.objectMapper = objectMapper;
         this.googleJwtDecoder = googleJwtDecoder;
+        this.userEventPublisher = userEventPublisher;
+        this.emailVerificationService = emailVerificationService;
     }
 
     @Override
@@ -59,11 +55,37 @@ public class AuthServiceImpl implements AuthService {
         AuthUser user = AuthUser.createLocal(email, passwordEncoder.encode(password));
         AuthUser saved = authUserRepository.save(user);
 
+        // Profile ismi kaybolmasın diye event'i register'da publish ediyoruz
         String safeFullName = normalizeFullName(fullName, email);
+        userEventPublisher.publishUserRegistered(new UserRegisteredEvent(
+                saved.getId(),
+                saved.getEmail(),
+                safeFullName,
+                Instant.now()
+        ));
 
-        publishUserRegistered(saved.getId(), saved.getEmail(), safeFullName);
+        emailVerificationService.sendVerification(saved);
 
         return saved;
+    }
+
+    @Override
+    @Transactional
+    public void requestEmailVerification(String email) {
+        if (email == null || email.isBlank()) return;
+
+        AuthUser u = authUserRepository.findByEmail(email)
+                .orElseThrow(UserNotFoundException::new);
+
+        if (u.isEmailVerified()) return;
+
+        emailVerificationService.sendVerification(u);
+    }
+
+    @Override
+    @Transactional
+    public void verifyEmail(String token) {
+        emailVerificationService.verify(token);
     }
 
     @Override
@@ -78,6 +100,11 @@ public class AuthServiceImpl implements AuthService {
 
         if (!passwordEncoder.matches(password, user.getPasswordHash())) {
             throw new InvalidCredentialsException();
+        }
+
+        if (!user.isEmailVerified()) {
+            // ApiExceptionHandler bunu 403 + email_not_verified JSON'a çeviriyor
+            throw new IllegalStateException("email_not_verified");
         }
 
         return user;
@@ -95,6 +122,40 @@ public class AuthServiceImpl implements AuthService {
         String rolesCsv = "";
         return jwtService.issueAccessToken(user.getId(), user.getEmail(), rolesCsv);
     }
+
+    @Override
+    @Transactional
+    public void deleteAccount(UUID userId) {
+        getUser(userId);
+        authUserRepository.deleteById(userId);
+
+        userEventPublisher.publishUserDeleted(new UserDeletedEvent(
+                userId,
+                Instant.now()
+        ));
+    }
+
+    @Override
+    @Transactional
+    public void changePassword(UUID userId, String currentPassword, String newPassword) {
+        AuthUser user = authUserRepository.findById(userId).orElseThrow(() -> new UserNotFoundException());
+
+        if (user.getProvider() == null || user.getProvider().name().equals("GOOGLE")) {
+            throw new PasswordChangeNotAllowedException();
+        }
+
+        if (user.getPasswordHash() == null || user.getPasswordHash().isBlank()) {
+            throw new PasswordChangeNotAllowedException();
+        }
+
+        if (!passwordEncoder.matches(currentPassword, user.getPasswordHash())) {
+            throw new CurrentPasswordInvalidException();
+        }
+
+        user.setPasswordHash(passwordEncoder.encode(newPassword));
+        authUserRepository.save(user);
+    }
+
 
     @Override
     @Transactional
@@ -121,46 +182,38 @@ public class AuthServiceImpl implements AuthService {
             throw new InvalidGoogleTokenException();
         }
 
-        // FullName boşsa fallback
         String safeFullName = normalizeFullName(fullName, email);
 
-        // Aynı email var mı?
         var existingOpt = authUserRepository.findByEmail(email);
         if (existingOpt.isPresent()) {
             AuthUser existing = existingOpt.get();
 
-            // Eğer bu email LOCAL hesapla kayıtlıysa, Google ile login yaptırmak istemiyorsan 409/duplicate at:
             if (existing.getProvider() != AuthProvider.GOOGLE) {
                 throw new DuplicateEmailException(email);
             }
 
+            // Google tarafında profile ensure etmek için event tekrar publish edilebilir (idempotent olmalı)
+            userEventPublisher.publishUserRegistered(new UserRegisteredEvent(
+                    existing.getId(),
+                    existing.getEmail(),
+                    safeFullName,
+                    Instant.now()
+            ));
+
             return existing;
         }
 
-        // Yeni Google user oluştur
         AuthUser created = AuthUser.createGoogle(email);
         AuthUser saved = authUserRepository.save(created);
 
-        // user-service profile oluştursun diye event
-        publishUserRegistered(saved.getId(), saved.getEmail(), safeFullName);
+        userEventPublisher.publishUserRegistered(new UserRegisteredEvent(
+                saved.getId(),
+                saved.getEmail(),
+                safeFullName,
+                Instant.now()
+        ));
 
         return saved;
-    }
-
-    private void publishUserRegistered(UUID userId, String email, String fullName) {
-        UserRegisteredEvent event = new UserRegisteredEvent(
-                userId,
-                email,
-                fullName,
-                Instant.now()
-        );
-
-        try {
-            byte[] payload = objectMapper.writeValueAsBytes(event);
-            kafkaTemplate.send("user.registered", userId.toString(), payload);
-        } catch (JsonProcessingException e) {
-            throw new RuntimeException("Failed to serialize UserRegisteredEvent", e);
-        }
     }
 
     private static String normalizeFullName(String fullName, String email) {

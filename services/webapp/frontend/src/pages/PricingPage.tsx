@@ -1,33 +1,5 @@
-export default function PricingPage() {
-    return (
-        <div className="space-y-6">
-            <div>
-                <div className="text-sm text-slate-500">Planlar</div>
-                <h1 className="text-2xl font-semibold text-slate-900">Paketler</h1>
-                <p className="mt-1 text-slate-600">Şimdilik demo. Sonra billing-service ile bağlanacak.</p>
-            </div>
-
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-                <Card name="Free" price="₺0" desc="Başlamak için" items={["Demo panel", "Temel kütüphane", "JWT giriş"]} />
-                <Card
-                    name="Pro"
-                    price="₺499"
-                    desc="Üretenler için"
-                    highlight
-                    items={["Takvim + taslak", "Daha fazla kredi", "Öncelikli üretim", "Otomasyon (yakında)"]}
-                />
-                <Card name="Ekip" price="₺1299" desc="Takımlar için" items={["Onay akışı", "Roller", "Analytics", "Destek"]} />
-            </div>
-
-            <div className="vo-card p-6">
-                <div className="text-sm font-semibold text-slate-900">Önemli</div>
-                <div className="mt-2 text-sm text-slate-600">
-                    Paketler şimdilik UI amaçlı. Faturalandırma ve ödeme akışı sonraki adım.
-                </div>
-            </div>
-        </div>
-    );
-}
+import { useEffect, useState } from "react";
+import { changePlan, getAccount, type UserResponse } from "../lib/account";
 
 function Card({
                   name,
@@ -35,19 +7,23 @@ function Card({
                   desc,
                   items,
                   highlight,
+                  onSelect,
+                  buttonText,
               }: {
     name: string;
     price: string;
     desc: string;
     items: string[];
     highlight?: boolean;
+    onSelect?: () => void;
+    buttonText?: string;
 }) {
     return (
         <div
             className={
                 highlight
-                    ? "rounded-[22px] p-6 text-white border border-blue-600 bg-gradient-to-r from-blue-700 to-sky-500 shadow-[0_25px_80px_rgba(37,99,235,0.22)]"
-                    : "vo-card p-6"
+                    ? "rounded-3xl bg-blue-600 text-white p-6 shadow-soft ring-1 ring-blue-500/30"
+                    : "rounded-3xl bg-white p-6 shadow-soft ring-1 ring-slate-200"
             }
         >
             <div className="flex items-center justify-between">
@@ -66,22 +42,92 @@ function Card({
                 <span className={highlight ? "text-sm text-white/80" : "text-sm text-slate-500"}>/ay</span>
             </div>
 
-            <ul className={highlight ? "mt-4 space-y-2 text-sm text-white/90" : "mt-4 space-y-2 text-sm text-slate-600"}>
-                {items.map((x) => (
-                    <li key={x}>• {x}</li>
+            <ul className={highlight ? "mt-5 space-y-2 text-sm text-white/90" : "mt-5 space-y-2 text-sm text-slate-700"}>
+                {items.map((it) => (
+                    <li key={it}>• {it}</li>
                 ))}
             </ul>
 
-            <a
-                href="/register"
-                className={
+            {onSelect && (
+                <button
+                    onClick={onSelect}
+                    className={
+                        highlight
+                            ? "mt-6 w-full rounded-2xl bg-white text-blue-700 px-4 py-3 text-sm font-semibold hover:bg-white/90 transition"
+                            : "mt-6 w-full rounded-2xl bg-blue-600 text-white px-4 py-3 text-sm font-semibold hover:bg-blue-700 transition"
+                    }
+                >
+                    {buttonText ?? "Seç"}
+                </button>
+            )}
+        </div>
+    );
+}
+
+export default function PricingPage() {
+    const [me, setMe] = useState<UserResponse | null>(null);
+    const [busy, setBusy] = useState<string | null>(null);
+
+    useEffect(() => {
+        getAccount().then(setMe).catch(() => setMe(null));
+    }, []);
+
+    const upgradeToPro = async () => {
+        setBusy("PRO");
+        try {
+            const updated = await changePlan("PRO");
+            setMe(updated);
+        } finally {
+            setBusy(null);
+        }
+    };
+
+    const cancelToFree = async () => {
+        setBusy("FREE");
+        try {
+            const updated = await changePlan("FREE");
+            setMe(updated);
+        } finally {
+            setBusy(null);
+        }
+    };
+
+    return (
+        <div className="space-y-6">
+            <div>
+                <div className="text-sm text-slate-500">Planlar</div>
+                <h1 className="text-2xl font-semibold text-slate-900">Paketler</h1>
+                <p className="mt-1 text-slate-600">
+                    Şimdilik demo. Plan güncelleme user-service’e bağlı. (Mevcut plan:{" "}
+                    <span className="font-semibold">{me?.plan ?? "?"}</span>)
+                </p>
+            </div>
+
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+                <Card
+                    name="Free"
+                    price="₺0"
+                    desc="Başlamak için"
+                    items={["Demo panel", "Temel kütüphane", "JWT giriş"]}
+                    onSelect={busy ? undefined : cancelToFree}
+                    buttonText={busy === "FREE" ? "Güncelleniyor..." : "FREE’ye geç"}
+                />
+                <Card
+                    name="Pro"
+                    price="₺499"
+                    desc="Üretenler için"
                     highlight
-                        ? "mt-6 inline-flex w-full justify-center rounded-2xl bg-white px-4 py-3 text-sm font-semibold text-blue-700 hover:bg-white/90"
-                        : "mt-6 inline-flex w-full justify-center rounded-2xl bg-slate-900 px-4 py-3 text-sm font-semibold text-white hover:bg-slate-800"
-                }
-            >
-                {name} seç
-            </a>
+                    items={["Studio prompt builder", "Daha yüksek limit", "Öncelikli destek"]}
+                    onSelect={busy ? undefined : upgradeToPro}
+                    buttonText={busy === "PRO" ? "Güncelleniyor..." : "PRO’ya yükselt"}
+                />
+                <Card
+                    name="Enterprise"
+                    price="Teklif"
+                    desc="Takımlar için"
+                    items={["Takım yönetimi", "On-prem opsiyon", "Özel entegrasyonlar"]}
+                />
+            </div>
         </div>
     );
 }

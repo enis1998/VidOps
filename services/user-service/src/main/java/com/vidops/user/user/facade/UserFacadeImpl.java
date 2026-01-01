@@ -40,7 +40,7 @@ public class UserFacadeImpl implements UserFacade {
     @Override
     @Transactional
     public UserResponse update(UUID id, UpdateUserRequest req) {
-        UserProfile updated = userService.update(id, req.fullName(), req.plan(), req.credits());
+        UserProfile updated = userService.update(id, req.fullName());
         return userMapper.toResponse(updated);
     }
 

@@ -11,6 +11,7 @@ import PublishingPage from "./pages/PublishingPage";
 import LibraryPage from "./pages/LibraryPage";
 import AccountsPage from "./pages/AccountsPage";
 import PricingPage from "./pages/PricingPage";
+import SettingsPage from "./pages/SettingsPage";
 
 export default function App() {
     return (
@@ -21,7 +22,7 @@ export default function App() {
                 <Route path="/login" element={<LoginPage />} />
                 <Route path="/register" element={<RegisterPage />} />
 
-                {/* TR -> EN redirects (recommended option A) */}
+                {/* TR -> EN redirects */}
                 <Route path="/giris" element={<Navigate to="/login" replace />} />
                 <Route path="/kayit" element={<Navigate to="/register" replace />} />
 
@@ -34,12 +35,14 @@ export default function App() {
                     <Route path="library" element={<LibraryPage />} />
                     <Route path="accounts" element={<AccountsPage />} />
                     <Route path="pricing" element={<PricingPage />} />
+                    <Route path="settings" element={<SettingsPage />} />
 
                     {/* TR subpaths -> EN */}
                     <Route path="yayinlama" element={<Navigate to="/app/publishing" replace />} />
                     <Route path="kutuphane" element={<Navigate to="/app/library" replace />} />
                     <Route path="hesaplar" element={<Navigate to="/app/accounts" replace />} />
                     <Route path="paketler" element={<Navigate to="/app/pricing" replace />} />
+                    <Route path="ayarlar" element={<Navigate to="/app/settings" replace />} />
                 </Route>
 
                 <Route path="*" element={<div className="container" style={{ padding: 24 }}>Sayfa bulunamadı</div>} />

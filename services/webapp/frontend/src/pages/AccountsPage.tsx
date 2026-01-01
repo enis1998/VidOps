@@ -1,5 +1,4 @@
 import { useMemo, useState } from "react";
-import { isLoggedIn } from "../lib/auth";
 
 type Connected = { tiktok: boolean; reels: boolean; shorts: boolean };
 
@@ -7,24 +6,21 @@ function getConnected(): Connected {
     try {
         return (
             JSON.parse(localStorage.getItem("connectedAccounts") || "null") || {
-                tiktok: false,
-                reels: false,
+                tiktok: true,
+                reels: true,
                 shorts: false,
             }
         );
     } catch {
-        return { tiktok: false, reels: false, shorts: false };
+        return { tiktok: true, reels: true, shorts: false };
     }
 }
 
-function setConnected(key: keyof Connected, val: boolean) {
-    const x = getConnected();
-    x[key] = !!val;
-    localStorage.setItem("connectedAccounts", JSON.stringify(x));
+function setConnected(v: Connected) {
+    localStorage.setItem("connectedAccounts", JSON.stringify(v));
 }
 
 export default function AccountsPage() {
-    const logged = isLoggedIn();
     const [acc, setAcc] = useState<Connected>(() => getConnected());
 
     const items = useMemo(
@@ -37,36 +33,35 @@ export default function AccountsPage() {
     );
 
     function connect(k: keyof Connected) {
-        if (!logged) {
-            alert("Hesap bağlamak için giriş yapmalısın.");
-            return;
-        }
-        setConnected(k, true);
-        setAcc(getConnected());
+        const next = { ...acc, [k]: true };
+        setAcc(next);
+        setConnected(next);
     }
 
     function disconnect(k: keyof Connected) {
-        setConnected(k, false);
-        setAcc(getConnected());
+        const next = { ...acc, [k]: false };
+        setAcc(next);
+        setConnected(next);
     }
 
     return (
         <div className="space-y-6">
             <div>
-                <h1 className="text-3xl font-extrabold tracking-tight">Hesaplar</h1>
+                <div className="text-sm text-slate-500">Hesaplar</div>
+                <h1 className="text-2xl font-semibold text-slate-900">Bağlantılar</h1>
                 <p className="mt-1 text-slate-600">
                     Şimdilik 3 platform. Sonra admin panelden ekleme/çıkarma yapacağız.
                 </p>
             </div>
 
-            <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-soft">
-                <div className="text-lg font-semibold">Bağlantılar</div>
+            <div className="rounded-3xl bg-white p-6 shadow-sm ring-1 ring-slate-200">
+                <div className="text-lg font-semibold text-slate-900">Bağlantılar</div>
 
-                <div className="mt-5 grid grid-cols-1 gap-4 md:grid-cols-3">
+                <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-3">
                     {items.map((it) => {
                         const connected = acc[it.key];
                         return (
-                            <div key={it.key} className="rounded-3xl border border-slate-200 bg-slate-50 p-5">
+                            <div key={it.key} className="rounded-3xl border border-slate-200 bg-white p-5">
                                 <div className="text-base font-semibold">{it.label}</div>
                                 <div className="mt-2 text-sm text-slate-600">
                                     Durum:{" "}
@@ -79,7 +74,7 @@ export default function AccountsPage() {
                                     {connected ? (
                                         <button
                                             onClick={() => disconnect(it.key)}
-                                            className="rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-800 hover:bg-slate-50"
+                                            className="rounded-2xl bg-white px-4 py-2 text-sm font-semibold ring-1 ring-slate-200 hover:bg-slate-50"
                                         >
                                             Bağlantıyı kaldır
                                         </button>
@@ -97,7 +92,7 @@ export default function AccountsPage() {
                     })}
                 </div>
 
-                <div className="mt-6 rounded-3xl border border-slate-200 bg-white p-5">
+                <div className="mt-6 rounded-3xl border border-slate-200 bg-slate-50 p-5">
                     <div className="text-sm font-semibold">Not</div>
                     <div className="mt-1 text-sm text-slate-600">
                         Gerçek OAuth bağlantıları (Google/TikTok/Meta) auth-service üzerinden eklenecek.
